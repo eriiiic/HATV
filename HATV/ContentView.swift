@@ -1,58 +1,117 @@
-//
-//  ContentView.swift
-//  HATV
-//
-//  Created by Eric on 01/04/2026.
-//
-
 import SwiftUI
 import SwiftData
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query private var items: [Item]
+    @Query private var storedConnections: [StoredConnection]
+    @State private var viewModel = RootViewModel()
+
+    private var storedConnection: StoredConnection? {
+        storedConnections.first(where: { $0.id == StoredConnection.defaultID }) ?? storedConnections.first
+    }
 
     var body: some View {
-        NavigationSplitView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
-                    } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color(red: 0.05, green: 0.08, blue: 0.16),
+                    Color(red: 0.07, green: 0.17, blue: 0.28),
+                    Color(red: 0.04, green: 0.10, blue: 0.11)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+
+            Circle()
+                .fill(Color.cyan.opacity(0.16))
+                .frame(width: 720, height: 720)
+                .blur(radius: 120)
+                .offset(x: 520, y: -320)
+
+            Circle()
+                .fill(Color.blue.opacity(0.14))
+                .frame(width: 560, height: 560)
+                .blur(radius: 120)
+                .offset(x: -520, y: 320)
+
+            switch viewModel.screen {
+            case .booting:
+                LaunchView(statusMessage: viewModel.statusMessage)
+            case .connection:
+                ConnectionSetupView(viewModel: viewModel) {
+                    Task {
+                        await viewModel.connect(modelContext: modelContext, storedConnection: storedConnection)
                     }
                 }
-                .onDelete(perform: deleteItems)
-            }
-            .toolbar {
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
+            case .dashboardPicker:
+                DashboardPickerView(
+                    viewModel: viewModel,
+                    chooseDashboard: { dashboard in
+                        Task {
+                            await viewModel.chooseDashboard(
+                                dashboard,
+                                storedConnection: storedConnection,
+                                modelContext: modelContext
+                            )
+                        }
+                    },
+                    changeConnection: {
+                        viewModel.showConnectionEditor()
                     }
-                }
+                )
+            case .dashboard:
+                DashboardScreen(
+                    viewModel: viewModel,
+                    showDashboards: {
+                        viewModel.showDashboardPicker()
+                    },
+                    changeConnection: {
+                        viewModel.showConnectionEditor()
+                    }
+                )
             }
-        } detail: {
-            Text("Select an item")
         }
-    }
-
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
+        .task {
+            await viewModel.bootstrap(with: storedConnection)
         }
-    }
-
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            for index in offsets {
-                modelContext.delete(items[index])
-            }
+        .alert(
+            "Something Needs Attention",
+            isPresented: Binding(
+                get: { viewModel.errorMessage != nil },
+                set: { if !$0 { viewModel.errorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(viewModel.errorMessage ?? "")
         }
     }
 }
 
 #Preview {
     ContentView()
-        .modelContainer(for: Item.self, inMemory: true)
+        .modelContainer(for: StoredConnection.self, inMemory: true)
+}
+
+private struct LaunchView: View {
+    let statusMessage: String
+
+    var body: some View {
+        VStack(spacing: 28) {
+            Text("HATV")
+                .font(.system(size: 84, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+
+            Text("Home Assistant companion for Apple TV")
+                .font(.title3.weight(.medium))
+                .foregroundStyle(.white.opacity(0.8))
+
+            ProgressView()
+                .tint(.white)
+
+            Text(statusMessage)
+                .foregroundStyle(.white.opacity(0.75))
+        }
+    }
 }
