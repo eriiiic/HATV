@@ -2,6 +2,8 @@ import Foundation
 import Observation
 import SwiftData
 
+private let videoHubSelectionPath = "__hatv_video_hub__"
+
 @MainActor
 @Observable
 final class RootViewModel {
@@ -21,6 +23,7 @@ final class RootViewModel {
     var selectedDashboard: HADashboardSummary?
     var dashboardConfig: HALovelaceConfig?
     var selectedViewIndex = 0
+    var isShowingVideoHub = false
     var entityStates: [String: HAEntityState] = [:]
     var cameraPreviewURLs: [String: URL] = [:]
     var cameraStreamURLs: [String: URL] = [:]
@@ -43,6 +46,26 @@ final class RootViewModel {
             return dashboardConfig?.views.first
         }
         return dashboardConfig.views[selectedViewIndex]
+    }
+
+    var allCameraStates: [HAEntityState] {
+        entityStates.values
+            .filter { $0.domain == "camera" }
+            .sorted { lhs, rhs in
+                lhs.friendlyName.localizedCaseInsensitiveCompare(rhs.friendlyName) == .orderedAscending
+            }
+    }
+
+    var lightsOnCount: Int {
+        entityStates.values.filter { $0.domain == "light" && $0.isActive }.count
+    }
+
+    var activeClimateCount: Int {
+        entityStates.values.filter { $0.domain == "climate" && $0.isActive }.count
+    }
+
+    var activeMediaCount: Int {
+        entityStates.values.filter { $0.domain == "media_player" && $0.isActive }.count
     }
 
     func bootstrap(with storedConnection: StoredConnection?, modelContext: ModelContext) async {
@@ -190,9 +213,12 @@ final class RootViewModel {
         do {
             dashboardConfig = try await client.fetchDashboardConfig(urlPath: selectedDashboard.normalizedURLPath)
 
+            let storedSelectionPath = activeConnection?.selectedViewPath
+            isShowingVideoHub = storedSelectionPath == videoHubSelectionPath
+
             if let preferredIndex = dashboardConfig?.preferredViewIndex(
-                path: activeConnection?.selectedViewPath,
-                title: activeConnection?.selectedViewTitle
+                path: isShowingVideoHub ? nil : storedSelectionPath,
+                title: isShowingVideoHub ? nil : activeConnection?.selectedViewTitle
             ) {
                 selectedViewIndex = preferredIndex
             } else {
@@ -201,7 +227,11 @@ final class RootViewModel {
 
             persistCurrentViewSelection()
             screen = .dashboard
-            await preloadCameraURLs()
+            await preloadCameraURLs(for: dashboardCameraEntityIDs(), includeStreamURLs: true)
+
+            if isShowingVideoHub {
+                await preloadAllCameraURLs()
+            }
         } catch {
             present(error, context: "Dashboard")
         }
@@ -218,8 +248,15 @@ final class RootViewModel {
     func selectView(_ view: HALovelaceView) {
         guard let dashboardConfig else { return }
         if let index = dashboardConfig.views.firstIndex(where: { $0.id == view.id }) {
+            isShowingVideoHub = false
             applySelectedView(at: index)
         }
+    }
+
+    func showVideoHub() async {
+        isShowingVideoHub = true
+        persistCurrentViewSelection()
+        await preloadAllCameraURLs()
     }
 
     func state(for entityID: String?) -> HAEntityState? {
@@ -409,6 +446,7 @@ final class RootViewModel {
             return
         }
 
+        isShowingVideoHub = false
         applySelectedView(at: index)
     }
 
@@ -544,25 +582,19 @@ final class RootViewModel {
         }
     }
 
-    private func preloadCameraURLs() async {
-        guard let client, let dashboardConfig else { return }
+    private func preloadAllCameraURLs() async {
+        await preloadCameraURLs(for: allCameraStates.map(\.entityID), includeStreamURLs: false)
+    }
 
-        let cameraEntityIDs = Set<String>(
-            dashboardConfig.allCards.compactMap { card in
-                let cameraID = card.cameraEntityID
-                guard let cameraID, state(for: cameraID)?.domain == "camera" else {
-                    return nil
-                }
-                return cameraID
-            }
-        )
+    private func preloadCameraURLs(for entityIDs: [String], includeStreamURLs: Bool) async {
+        guard let client else { return }
 
-        for entityID in cameraEntityIDs {
+        for entityID in Set(entityIDs) {
             if cameraPreviewURLs[entityID] == nil {
                 cameraPreviewURLs[entityID] = try? await client.signedCameraPreviewURL(entityID: entityID)
             }
 
-            if cameraStreamURLs[entityID] == nil {
+            if includeStreamURLs, cameraStreamURLs[entityID] == nil {
                 cameraStreamURLs[entityID] = try? await client.signedCameraStreamURL(entityID: entityID)
             }
         }
@@ -645,13 +677,33 @@ final class RootViewModel {
     private func persistCurrentViewSelection() {
         guard let activeConnection else { return }
 
-        activeConnection.selectedViewPath = currentView?.path
-        activeConnection.selectedViewTitle = currentView?.displayTitle
+        if isShowingVideoHub {
+            activeConnection.selectedViewPath = videoHubSelectionPath
+            activeConnection.selectedViewTitle = "Video"
+        } else {
+            activeConnection.selectedViewPath = currentView?.path
+            activeConnection.selectedViewTitle = currentView?.displayTitle
+        }
         activeConnection.updatedAt = .now
         persistConnection()
     }
 
     private func persistConnection() {
         try? activeModelContext?.save()
+    }
+
+    private func dashboardCameraEntityIDs() -> [String] {
+        guard let dashboardConfig else { return [] }
+
+        return Array(
+            Set(
+                dashboardConfig.allCards.compactMap { card in
+                    guard let cameraID = card.cameraEntityID, state(for: cameraID)?.domain == "camera" else {
+                        return nil
+                    }
+                    return cameraID
+                }
+            )
+        )
     }
 }

@@ -248,81 +248,14 @@ struct DashboardCardContent: View {
         let state = viewModel.state(for: entityID)
         let previewURL = viewModel.cameraPreviewURL(for: entityID)
 
-        return Button {
+        return DashboardCameraTile(
+            title: state?.friendlyName ?? primaryTitle(for: state),
+            subtitle: state?.displayState ?? "Live",
+            detail: state?.subtitle ?? "Open full screen",
+            previewURL: previewURL
+        ) {
             openCamera(entityID, state?.friendlyName ?? primaryTitle(for: state))
-        } label: {
-            ZStack(alignment: .bottomLeading) {
-                if let previewURL {
-                    AsyncImage(url: previewURL) { image in
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    } placeholder: {
-                        Rectangle()
-                            .fill(Color.white.opacity(0.06))
-                            .overlay(ProgressView().tint(.white))
-                    }
-                } else {
-                    Rectangle()
-                        .fill(Color.white.opacity(0.06))
-                        .overlay {
-                            Image(systemName: "video.fill")
-                                .font(.system(size: 44, weight: .bold))
-                                .foregroundStyle(.white.opacity(0.72))
-                        }
-                }
-
-                LinearGradient(
-                    colors: [.clear, .black.opacity(0.85)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-
-                VStack {
-                    HStack {
-                        Spacer()
-
-                        HStack(spacing: 8) {
-                            Circle()
-                                .fill(Color.red)
-                                .frame(width: 10, height: 10)
-
-                            Text("LIVE")
-                                .font(.subheadline.weight(.bold))
-                        }
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .background(Color.black.opacity(0.32), in: Capsule())
-                    }
-
-                    Spacer()
-                }
-                .padding(20)
-
-                VStack(alignment: .leading, spacing: 10) {
-                    Text(state?.friendlyName ?? primaryTitle(for: state))
-                        .font(.title2.bold())
-                        .foregroundStyle(.white)
-
-                    Text(state?.displayState ?? "Live")
-                        .font(.headline.weight(.bold))
-                        .foregroundStyle(.white.opacity(0.82))
-
-                    Label("Open full screen", systemImage: "arrow.up.left.and.arrow.down.right")
-                        .font(.headline.weight(.semibold))
-                        .foregroundStyle(.white.opacity(0.88))
-                }
-                .padding(24)
-            }
-            .frame(maxWidth: .infinity, minHeight: 260)
-            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .strokeBorder(.white.opacity(0.14))
-            )
         }
-        .buttonStyle(.plain)
     }
 
     private var tileCard: some View {
@@ -1038,6 +971,93 @@ struct DashboardCardContent: View {
 
     private var entityState: HAEntityState? {
         viewModel.state(for: card.entityID)
+    }
+}
+
+struct DashboardCameraTile: View {
+    let title: String
+    let subtitle: String
+    let detail: String
+    let previewURL: URL?
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            ZStack(alignment: .bottomLeading) {
+                if let previewURL {
+                    AsyncImage(url: previewURL) { image in
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    } placeholder: {
+                        Rectangle()
+                            .fill(Color.white.opacity(0.06))
+                            .overlay(ProgressView().tint(.white))
+                    }
+                } else {
+                    Rectangle()
+                        .fill(Color.white.opacity(0.06))
+                        .overlay {
+                            Image(systemName: "video.fill")
+                                .font(.system(size: 44, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.72))
+                        }
+                }
+
+                LinearGradient(
+                    colors: [.clear, .black.opacity(0.88)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+
+                VStack {
+                    HStack {
+                        Spacer()
+
+                        HStack(spacing: 8) {
+                            Circle()
+                                .fill(Color.red)
+                                .frame(width: 10, height: 10)
+
+                            Text("LIVE")
+                                .font(.subheadline.weight(.bold))
+                        }
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(Color.black.opacity(0.34), in: Capsule())
+                    }
+
+                    Spacer()
+                }
+                .padding(20)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(title)
+                        .font(.title2.bold())
+                        .foregroundStyle(.white)
+                        .multilineTextAlignment(.leading)
+                        .lineLimit(2)
+
+                    Text(subtitle)
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(.white.opacity(0.82))
+
+                    Label(detail, systemImage: "arrow.up.left.and.arrow.down.right")
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.88))
+                        .lineLimit(1)
+                }
+                .padding(24)
+            }
+            .frame(maxWidth: .infinity, minHeight: 260)
+            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .strokeBorder(.white.opacity(0.14))
+            )
+        }
+        .buttonStyle(.plain)
     }
 }
 

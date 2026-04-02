@@ -226,6 +226,57 @@ struct HATVTests {
         #expect(weather.subtitle == "Partly Cloudy")
     }
 
+    @Test @MainActor func sortsVideoHubCamerasAlphabetically() throws {
+        let drivewayJSON = """
+        {
+          "entity_id": "camera.driveway",
+          "state": "streaming",
+          "attributes": {
+            "friendly_name": "Driveway"
+          },
+          "last_changed": null,
+          "last_updated": null
+        }
+        """
+
+        let frontDoorJSON = """
+        {
+          "entity_id": "camera.front_door",
+          "state": "idle",
+          "attributes": {
+            "friendly_name": "Front Door"
+          },
+          "last_changed": null,
+          "last_updated": null
+        }
+        """
+
+        let lightJSON = """
+        {
+          "entity_id": "light.patio",
+          "state": "on",
+          "attributes": {
+            "friendly_name": "Patio"
+          },
+          "last_changed": null,
+          "last_updated": null
+        }
+        """
+
+        let viewModel = RootViewModel()
+        let driveway = try JSONDecoder().decode(HAEntityState.self, from: Data(drivewayJSON.utf8))
+        let frontDoor = try JSONDecoder().decode(HAEntityState.self, from: Data(frontDoorJSON.utf8))
+        let patioLight = try JSONDecoder().decode(HAEntityState.self, from: Data(lightJSON.utf8))
+
+        viewModel.entityStates = [
+            driveway.entityID: driveway,
+            frontDoor.entityID: frontDoor,
+            patioLight.entityID: patioLight
+        ]
+
+        #expect(viewModel.allCameraStates.map(\.friendlyName) == ["Driveway", "Front Door"])
+    }
+
     @Test func persistsTokenForCurrentRuntime() throws {
         let store = KeychainTokenStore()
         let account = "test-\(UUID().uuidString)"

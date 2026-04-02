@@ -11,15 +11,17 @@ struct DashboardScreen: View {
     @State private var isChromeVisible = true
     @State private var chromeAutoHideTask: Task<Void, Never>?
 
-    private let columns = [
-        GridItem(.flexible(), spacing: 28),
-        GridItem(.flexible(), spacing: 28)
+    private let dashboardColumns = [
+        GridItem(.adaptive(minimum: 430, maximum: 560), spacing: 28, alignment: .top)
+    ]
+    private let videoColumns = [
+        GridItem(.adaptive(minimum: 360, maximum: 480), spacing: 24, alignment: .top)
     ]
 
     var body: some View {
         ZStack(alignment: .top) {
             dashboardContent
-                .padding(.top, isChromeVisible ? 184 : 8)
+                .padding(.top, isChromeVisible ? 188 : 20)
 
             if isChromeVisible {
                 header
@@ -36,6 +38,9 @@ struct DashboardScreen: View {
             cancelChromeAutoHide()
         }
         .onChange(of: viewModel.selectedViewIndex) { _, _ in
+            revealChrome()
+        }
+        .onChange(of: viewModel.isShowingVideoHub) { _, _ in
             revealChrome()
         }
         .onChange(of: presentedCamera) { _, camera in
@@ -66,9 +71,21 @@ struct DashboardScreen: View {
 
     @ViewBuilder
     private var dashboardContent: some View {
-        if let currentView = viewModel.currentView {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 32) {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 32) {
+                KioskOverviewBanner(
+                    title: heroTitle,
+                    subtitle: heroSubtitle,
+                    cameraCount: viewModel.allCameraStates.count,
+                    lightsOnCount: viewModel.lightsOnCount,
+                    activeClimateCount: viewModel.activeClimateCount,
+                    activeMediaCount: viewModel.activeMediaCount,
+                    accent: viewModel.isShowingVideoHub ? .cyan : .white
+                )
+
+                if viewModel.isShowingVideoHub {
+                    videoHubContent
+                } else if let currentView = viewModel.currentView {
                     if currentView.sections.isEmpty {
                         cardGrid(for: currentView.cards)
                     } else {
@@ -76,7 +93,7 @@ struct DashboardScreen: View {
                             VStack(alignment: .leading, spacing: 18) {
                                 if let title = section.title, !title.isEmpty {
                                     Text(title)
-                                        .font(.title.bold())
+                                        .font(.system(size: 28, weight: .bold, design: .rounded))
                                         .foregroundStyle(.white)
                                 }
 
@@ -84,19 +101,11 @@ struct DashboardScreen: View {
                             }
                         }
                     }
+                } else {
+                    emptyDashboardState
                 }
-                .padding(.bottom, 48)
             }
-        } else {
-            VStack(spacing: 14) {
-                Text("This dashboard is empty")
-                    .font(.title.bold())
-                    .foregroundStyle(.white)
-
-                Text("Pick another dashboard or add cards in Home Assistant.")
-                    .foregroundStyle(.white.opacity(0.72))
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.bottom, 48)
         }
     }
 
@@ -130,6 +139,22 @@ struct DashboardScreen: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 14) {
+                    Button {
+                        Task { await viewModel.showVideoHub() }
+                        revealChrome()
+                    } label: {
+                        Label("Video", systemImage: "video.fill")
+                            .font(.headline.weight(.bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 12)
+                            .background(
+                                (viewModel.isShowingVideoHub ? Color.white.opacity(0.20) : Color.white.opacity(0.08)),
+                                in: Capsule()
+                            )
+                    }
+                    .buttonStyle(.plain)
+
                     ForEach(viewModel.dashboardConfig?.views ?? []) { view in
                         Button {
                             viewModel.selectView(view)
@@ -141,7 +166,7 @@ struct DashboardScreen: View {
                                 .padding(.horizontal, 20)
                                 .padding(.vertical, 12)
                                 .background(
-                                    (view.id == viewModel.currentView?.id ? Color.white.opacity(0.20) : Color.white.opacity(0.08)),
+                                    ((!viewModel.isShowingVideoHub && view.id == viewModel.currentView?.id) ? Color.white.opacity(0.20) : Color.white.opacity(0.08)),
                                     in: Capsule()
                                 )
                         }
@@ -164,18 +189,94 @@ struct DashboardScreen: View {
 
     @ViewBuilder
     private func cardGrid(for cards: [HAAnyConfig]) -> some View {
-        LazyVGrid(columns: columns, alignment: .leading, spacing: 28) {
+        LazyVGrid(columns: dashboardColumns, alignment: .leading, spacing: 28) {
             ForEach(cards) { card in
                 DashboardCardView(
                     card: card,
                     viewModel: viewModel,
                     openCamera: { entityID, title in
-                        revealChrome()
-                        presentedCamera = PresentedCamera(entityID: entityID, title: title)
+                        presentCamera(entityID: entityID, title: title)
                     }
                 )
             }
         }
+    }
+
+    @ViewBuilder
+    private var videoHubContent: some View {
+        if viewModel.allCameraStates.isEmpty {
+            VStack(spacing: 14) {
+                Text("No cameras are available")
+                    .font(.title.bold())
+                    .foregroundStyle(.white)
+
+                Text("Add camera entities in Home Assistant to populate the video wall.")
+                    .foregroundStyle(.white.opacity(0.72))
+            }
+            .frame(maxWidth: .infinity, minHeight: 320)
+        } else {
+            VStack(alignment: .leading, spacing: 20) {
+                Text("All video streams")
+                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+
+                Text("Jump into any live feed and stay in fullscreen until you need the controls.")
+                    .font(.headline.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.72))
+
+                LazyVGrid(columns: videoColumns, alignment: .leading, spacing: 24) {
+                    ForEach(viewModel.allCameraStates) { camera in
+                        DashboardCameraTile(
+                            title: camera.friendlyName,
+                            subtitle: camera.displayState,
+                            detail: camera.subtitle ?? "Open full screen",
+                            previewURL: viewModel.cameraPreviewURL(for: camera.entityID)
+                        ) {
+                            presentCamera(entityID: camera.entityID, title: camera.friendlyName)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var emptyDashboardState: some View {
+        VStack(spacing: 14) {
+            Text("This dashboard is empty")
+                .font(.title.bold())
+                .foregroundStyle(.white)
+
+            Text("Pick another dashboard or add cards in Home Assistant.")
+                .foregroundStyle(.white.opacity(0.72))
+        }
+        .frame(maxWidth: .infinity, minHeight: 320)
+    }
+
+    private var heroTitle: String {
+        if viewModel.isShowingVideoHub {
+            return "Video Wall"
+        }
+
+        return viewModel.currentView?.displayTitle
+            ?? viewModel.selectedDashboard?.title
+            ?? "Dashboard"
+    }
+
+    private var heroSubtitle: String {
+        if viewModel.isShowingVideoHub {
+            return "Every Home Assistant camera in one native fullscreen hub."
+        }
+
+        if let dashboardTitle = viewModel.selectedDashboard?.title {
+            return "Kiosk view for \(dashboardTitle)."
+        }
+
+        return "Home Assistant companion for Apple TV."
+    }
+
+    private func presentCamera(entityID: String, title: String) {
+        revealChrome()
+        presentedCamera = PresentedCamera(entityID: entityID, title: title)
     }
 
     private func revealChrome() {
@@ -202,6 +303,97 @@ struct DashboardScreen: View {
     private func cancelChromeAutoHide() {
         chromeAutoHideTask?.cancel()
         chromeAutoHideTask = nil
+    }
+}
+
+private struct KioskOverviewBanner: View {
+    let title: String
+    let subtitle: String
+    let cameraCount: Int
+    let lightsOnCount: Int
+    let activeClimateCount: Int
+    let activeMediaCount: Int
+    let accent: Color
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 28) {
+            VStack(alignment: .leading, spacing: 14) {
+                Text(title)
+                    .font(.system(size: 56, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+
+                Text(subtitle)
+                    .font(.title3.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.76))
+
+                HStack(spacing: 12) {
+                    KioskInfoPill(title: "Cameras", value: "\(cameraCount)", tint: .cyan)
+                    KioskInfoPill(title: "Lights On", value: "\(lightsOnCount)", tint: .yellow)
+                    KioskInfoPill(title: "Climate", value: "\(activeClimateCount)", tint: .orange)
+                    KioskInfoPill(title: "Media", value: "\(activeMediaCount)", tint: .pink)
+                }
+            }
+
+            Spacer()
+
+            TimelineView(.periodic(from: .now, by: 60)) { context in
+                VStack(alignment: .trailing, spacing: 8) {
+                    Text(context.date, format: .dateTime.hour().minute())
+                        .font(.system(size: 54, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+
+                    Text(context.date, format: .dateTime.weekday(.wide).month(.wide).day())
+                        .font(.headline.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.74))
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 22)
+                .background(accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .strokeBorder(.white.opacity(0.10))
+                )
+            }
+        }
+        .padding(32)
+        .background(
+            ZStack {
+                RoundedRectangle(cornerRadius: 34, style: .continuous)
+                    .fill(.ultraThinMaterial)
+
+                LinearGradient(
+                    colors: [accent.opacity(0.16), .clear, .black.opacity(0.08)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 34, style: .continuous))
+            }
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 34, style: .continuous)
+                .strokeBorder(.white.opacity(0.12))
+        )
+    }
+}
+
+private struct KioskInfoPill: View {
+    let title: String
+    let value: String
+    let tint: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.64))
+
+            Text(value)
+                .font(.headline.weight(.bold))
+                .foregroundStyle(.white)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(tint.opacity(0.22), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }
 
