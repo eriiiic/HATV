@@ -24,6 +24,7 @@ final class RootViewModel {
     var entityStates: [String: HAEntityState] = [:]
     var cameraPreviewURLs: [String: URL] = [:]
     var cameraStreamURLs: [String: URL] = [:]
+    var historySamplesByKey: [String: [HAHistorySample]] = [:]
     var isBusy = false
     var statusMessage = "Loading…"
     var errorMessage: String?
@@ -33,6 +34,7 @@ final class RootViewModel {
     private var client: HomeAssistantClient?
     private var stateSubscriptionID: Int?
     private var lovelaceSubscriptionID: Int?
+    private var loadingHistoryKeys: Set<String> = []
 
     var currentView: HALovelaceView? {
         guard let dashboardConfig, dashboardConfig.views.indices.contains(selectedViewIndex) else {
@@ -205,12 +207,73 @@ final class RootViewModel {
         cameraStreamURLs[entityID]
     }
 
+    func historySamples(for entityID: String, hours: Int) -> [HAHistorySample] {
+        historySamplesByKey[historyKey(entityID: entityID, hours: hours)] ?? []
+    }
+
+    func loadHistoryIfNeeded(for entityID: String, hours: Int) async {
+        guard let client else { return }
+
+        let key = historyKey(entityID: entityID, hours: hours)
+        guard historySamplesByKey[key] == nil, !loadingHistoryKeys.contains(key) else {
+            return
+        }
+
+        loadingHistoryKeys.insert(key)
+        defer { loadingHistoryKeys.remove(key) }
+
+        do {
+            historySamplesByKey[key] = try await client.fetchHistory(entityID: entityID, hours: hours)
+        } catch {
+            present(error, context: "History")
+        }
+    }
+
     func executePrimaryAction(for card: HAAnyConfig) async {
-        await executeAction(card.tapAction, fallbackEntityID: card.entityID)
+        await executeAction(card.primaryAction, fallbackEntityID: card.entityID)
     }
 
     func executePrimaryAction(for item: HAEntityItem) async {
         await executeAction(item.action, fallbackEntityID: item.entityID)
+    }
+
+    func toggleEntity(_ entityID: String) async {
+        do {
+            try await performDefaultAction(for: entityID)
+        } catch {
+            present(error, context: "Action")
+        }
+    }
+
+    func adjustLightBrightness(for entityID: String, deltaPercent: Int) async {
+        guard let state = entityStates[entityID] else { return }
+
+        let current = state.brightnessPercent ?? (state.isActive ? 100 : 0)
+        let nextValue = min(max(current + deltaPercent, 1), 100)
+
+        await callService(
+            named: "light.turn_on",
+            targetEntityIDs: [entityID],
+            serviceData: ["brightness_pct": .number(Double(nextValue))]
+        )
+    }
+
+    func adjustClimateTemperature(for entityID: String, delta: Double) async {
+        guard let state = entityStates[entityID] else { return }
+
+        let current = state.targetTemperature ?? state.currentTemperature ?? state.numericState
+        guard let current else { return }
+
+        let nextValue = max(current + delta, 5)
+        await callService(
+            named: "climate.set_temperature",
+            targetEntityIDs: [entityID],
+            serviceData: ["temperature": .number(nextValue)]
+        )
+    }
+
+    func toggleMediaPlayback(for entityID: String) async {
+        await callService(named: "media_player.media_play_pause", targetEntityIDs: [entityID])
     }
 
     private func executeAction(_ action: HAActionConfig?, fallbackEntityID: String?) async {
@@ -246,6 +309,24 @@ final class RootViewModel {
             } else if let fallbackEntityID {
                 try await performDefaultAction(for: fallbackEntityID)
             }
+        } catch {
+            present(error, context: "Action")
+        }
+    }
+
+    private func callService(
+        named serviceName: String,
+        targetEntityIDs: [String],
+        serviceData: JSONDictionary = [:]
+    ) async {
+        guard let client else { return }
+
+        do {
+            try await client.callService(
+                named: serviceName,
+                targetEntityIDs: targetEntityIDs,
+                serviceData: serviceData
+            )
         } catch {
             present(error, context: "Action")
         }
@@ -319,6 +400,8 @@ final class RootViewModel {
         serverURLString = baseURLString
         instanceInfo = info
         entityStates = Dictionary(uniqueKeysWithValues: states.map { ($0.entityID, $0) })
+        historySamplesByKey = [:]
+        loadingHistoryKeys.removeAll()
         self.dashboards = dashboards.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
 
         try await beginSubscriptions(with: nextClient)
@@ -499,5 +582,9 @@ final class RootViewModel {
         let message = error.userFacingMessage(context: context)
         errorMessage = message
         print("[HATV] \(message)")
+    }
+
+    private func historyKey(entityID: String, hours: Int) -> String {
+        "\(entityID)|\(hours)"
     }
 }

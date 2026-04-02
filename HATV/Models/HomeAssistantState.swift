@@ -61,6 +61,10 @@ nonisolated struct HAEntityState: Codable, Identifiable, Equatable, Sendable {
             return "\(number.formatted(.number.precision(.fractionLength(0...1)))) \(unit)"
         }
 
+        if domain == "light", let brightnessPercent {
+            return state.lowercased() == "on" ? "\(brightnessPercent)%" : "Off"
+        }
+
         if domain == "cover", let position = attributes["current_position"]?.intValue {
             return "\(position)%"
         }
@@ -74,12 +78,24 @@ nonisolated struct HAEntityState: Codable, Identifiable, Equatable, Sendable {
             }
         }
 
+        if domain == "weather", let temperature = attributes["temperature"]?.doubleValue {
+            return "\(temperature.formatted(.number.precision(.fractionLength(0...1))))°"
+        }
+
         return state
             .replacingOccurrences(of: "_", with: " ")
             .capitalized
     }
 
     var subtitle: String? {
+        if domain == "weather" {
+            return state.replacingOccurrences(of: "_", with: " ").capitalized
+        }
+
+        if domain == "media_player" {
+            return mediaSubtitle ?? appName
+        }
+
         if let secondary = attributes["device_class"]?.stringValue {
             return secondary.replacingOccurrences(of: "_", with: " ").capitalized
         }
@@ -93,6 +109,47 @@ nonisolated struct HAEntityState: Codable, Identifiable, Equatable, Sendable {
 
     var numericState: Double? {
         Double(state)
+    }
+
+    var currentTemperature: Double? {
+        attributes["current_temperature"]?.doubleValue
+    }
+
+    var targetTemperature: Double? {
+        attributes["temperature"]?.doubleValue
+    }
+
+    var brightnessPercent: Int? {
+        guard let brightness = attributes["brightness"]?.doubleValue else {
+            return nil
+        }
+
+        return min(max(Int((brightness / 255.0) * 100.0), 0), 100)
+    }
+
+    var humidity: Int? {
+        attributes["humidity"]?.intValue
+    }
+
+    var mediaTitle: String? {
+        attributes["media_title"]?.stringValue
+    }
+
+    var mediaSubtitle: String? {
+        attributes["media_artist"]?.stringValue
+            ?? attributes["source"]?.stringValue
+    }
+
+    var appName: String? {
+        attributes["app_name"]?.stringValue
+    }
+
+    var volumePercent: Int? {
+        guard let level = attributes["volume_level"]?.doubleValue else {
+            return nil
+        }
+
+        return min(max(Int(level * 100.0), 0), 100)
     }
 
     var isActive: Bool {

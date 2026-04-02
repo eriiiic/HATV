@@ -1,5 +1,53 @@
 import Foundation
 
+nonisolated private let templateEntityRegex = try? NSRegularExpression(
+    pattern: #"\{\{\s*states\(['"]([^'"]+)['"]\)\s*\}\}"#,
+    options: []
+)
+
+private extension JSONDictionary {
+    nonisolated func string(at path: [String]) -> String? {
+        guard let value = value(at: path) else {
+            return nil
+        }
+        return value.stringValue
+    }
+
+    nonisolated func object(at path: [String]) -> JSONDictionary? {
+        guard let value = value(at: path) else {
+            return nil
+        }
+        return value.objectValue
+    }
+
+    nonisolated func value(at path: [String]) -> JSONValue? {
+        guard let key = path.first else {
+            return nil
+        }
+
+        let currentValue = self[key]
+        guard path.count > 1 else {
+            return currentValue
+        }
+
+        return currentValue?.objectValue?.value(at: Array(path.dropFirst()))
+    }
+}
+
+nonisolated private func templateEntityIDs(in text: String?) -> [String] {
+    guard let text, let regex = templateEntityRegex else {
+        return []
+    }
+
+    let nsText = text as NSString
+    return regex
+        .matches(in: text, options: [], range: NSRange(location: 0, length: nsText.length))
+        .compactMap { match in
+            guard match.numberOfRanges > 1 else { return nil }
+            return nsText.substring(with: match.range(at: 1))
+        }
+}
+
 nonisolated struct HADashboardSummary: Decodable, Identifiable, Equatable, Sendable {
     let id: String
     let urlPath: String
@@ -151,6 +199,17 @@ nonisolated struct HAEntityItem: Sendable {
     let action: HAActionConfig?
 }
 
+nonisolated struct HAChipItem: Identifiable, Sendable {
+    let id: String
+    let type: String
+    let entityID: String?
+    let content: String?
+    let icon: String?
+    let showConditions: Bool
+    let showTemperature: Bool
+    let action: HAActionConfig?
+}
+
 nonisolated struct HAActionConfig: Sendable {
     let kind: String
     let navigationPath: String?
@@ -209,6 +268,18 @@ nonisolated struct HAAnyConfig: Decodable, Identifiable, Sendable {
         raw["title"]?.stringValue
     }
 
+    var name: String? {
+        raw["name"]?.stringValue
+    }
+
+    var label: String? {
+        raw["label"]?.stringValue
+    }
+
+    var primaryText: String? {
+        raw["primary"]?.stringValue ?? name ?? heading
+    }
+
     var entityID: String? {
         raw["entity"]?.stringValue
     }
@@ -237,7 +308,8 @@ nonisolated struct HAAnyConfig: Decodable, Identifiable, Sendable {
                 return HAEntityItem(entityID: entityID, name: nil, icon: nil, action: nil)
             }
 
-            guard let object = item.objectValue, let entityID = object["entity"]?.stringValue else {
+            guard let object = item.objectValue,
+                  let entityID = object["entity"]?.stringValue ?? object["entity_id"]?.stringValue else {
                 return nil
             }
 
@@ -254,12 +326,95 @@ nonisolated struct HAAnyConfig: Decodable, Identifiable, Sendable {
         HAActionConfig(raw: raw["tap_action"]?.objectValue ?? [:])
     }
 
+    var primaryAction: HAActionConfig? {
+        if let tapAction {
+            return tapAction
+        }
+
+        if let navigationPath = raw["navigate"]?.stringValue {
+            return HAActionConfig(
+                raw: [
+                    "action": .string("navigate"),
+                    "navigation_path": .string(navigationPath)
+                ]
+            )
+        }
+
+        return nil
+    }
+
     var heading: String? {
         raw["heading"]?.stringValue ?? title
     }
 
     var secondaryText: String? {
-        raw["subtitle"]?.stringValue
+        raw["secondary"]?.stringValue ?? raw["subtitle"]?.stringValue ?? label
+    }
+
+    var icon: String? {
+        raw["icon"]?.stringValue
+    }
+
+    var navigationPath: String? {
+        primaryAction?.navigationPath
+    }
+
+    var isVerticalLayout: Bool {
+        raw["vertical"]?.boolValue ?? false
+    }
+
+    var roomAreaName: String? {
+        raw["area_name"]?.stringValue
+    }
+
+    var roomSensors: [String] {
+        raw["sensors"]?.arrayValue?.compactMap(\.stringValue) ?? []
+    }
+
+    var roomLights: [String] {
+        raw["lights"]?.arrayValue?.compactMap(\.stringValue) ?? []
+    }
+
+    var roomBackgroundThumbnailPath: String? {
+        raw.string(at: ["background", "image", "metadata", "thumbnail"])
+    }
+
+    var thermostatEcoTemperature: Double? {
+        raw["eco_temperature"]?.doubleValue
+    }
+
+    var showsBrightnessControl: Bool {
+        raw["show_brightness_control"]?.boolValue ?? false
+    }
+
+    var showsColorTemperatureControl: Bool {
+        raw["show_color_temp_control"]?.boolValue ?? false
+    }
+
+    var miniGraphHoursToShow: Int {
+        max(raw["hours_to_show"]?.intValue ?? 24, 1)
+    }
+
+    var chips: [HAChipItem] {
+        raw["chips"]?.arrayValue?.compactMap { value in
+            guard let chip = value.objectValue else {
+                return nil
+            }
+
+            let entityID = chip["entity"]?.stringValue
+            let content = chip["content"]?.stringValue
+
+            return HAChipItem(
+                id: entityID ?? content ?? UUID().uuidString,
+                type: chip["type"]?.stringValue ?? "template",
+                entityID: entityID,
+                content: content,
+                icon: chip["icon"]?.stringValue,
+                showConditions: chip["show_conditions"]?.boolValue ?? false,
+                showTemperature: chip["show_temperature"]?.boolValue ?? false,
+                action: HAActionConfig(raw: chip["tap_action"]?.objectValue ?? [:])
+            )
+        } ?? []
     }
 
     var flattened: [HAAnyConfig] {
@@ -269,6 +424,14 @@ nonisolated struct HAAnyConfig: Decodable, Identifiable, Sendable {
     var referencedEntityIDs: [String] {
         let directEntities = entities.map(\.entityID)
         let singles = [entityID, cameraEntityID].compactMap { $0 }
-        return Array(Set(singles + directEntities + childCards.flatMap(\.referencedEntityIDs)))
+        let templated = templateEntityIDs(in: raw["content"]?.stringValue)
+            + templateEntityIDs(in: raw["primary"]?.stringValue)
+            + templateEntityIDs(in: raw["secondary"]?.stringValue)
+            + templateEntityIDs(in: raw["label"]?.stringValue)
+            + chips.flatMap { chip in
+                [chip.entityID].compactMap { $0 } + templateEntityIDs(in: chip.content)
+            }
+
+        return Array(Set(singles + directEntities + templated + roomSensors + roomLights + childCards.flatMap(\.referencedEntityIDs)))
     }
 }

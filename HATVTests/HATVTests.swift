@@ -87,6 +87,64 @@ struct HATVTests {
         #expect(config.isStrategyDashboard)
     }
 
+    @Test func parsesRoomSummaryCardsWithEntityIdentifiers() throws {
+        let json = """
+        {
+          "type": "custom:room-summary-card",
+          "area_name": "Rez de Chaussee",
+          "navigate": "/essentiels-matemale/RdC",
+          "entities": [
+            {
+              "entity_id": "climate.chauffage_rdc",
+              "icon": "mdi:home-thermometer",
+              "tap_action": {
+                "action": "more-info"
+              }
+            },
+            {
+              "entity_id": "light.table_a_manger"
+            }
+          ],
+          "lights": ["light.table_a_manger"],
+          "sensors": ["sensor.cuisine_total_power"]
+        }
+        """
+
+        let card = try JSONDecoder().decode(HAAnyConfig.self, from: Data(json.utf8))
+
+        #expect(card.entities.map(\.entityID) == ["climate.chauffage_rdc", "light.table_a_manger"])
+        #expect(card.roomLights == ["light.table_a_manger"])
+        #expect(card.roomSensors == ["sensor.cuisine_total_power"])
+        #expect(card.primaryAction?.kind == "navigate")
+        #expect(card.primaryAction?.navigationPath == "/essentiels-matemale/RdC")
+    }
+
+    @Test func extractsTemplateEntityReferencesFromCards() throws {
+        let json = """
+        {
+          "type": "custom:mushroom-chips-card",
+          "chips": [
+            {
+              "type": "template",
+              "content": "{{ states('sensor.machine_a_laver_active') }}",
+              "icon": "mdi:washing-machine"
+            },
+            {
+              "type": "entity",
+              "entity": "sensor.puissance_active_linky"
+            }
+          ]
+        }
+        """
+
+        let card = try JSONDecoder().decode(HAAnyConfig.self, from: Data(json.utf8))
+
+        #expect(Set(card.referencedEntityIDs) == [
+            "sensor.machine_a_laver_active",
+            "sensor.puissance_active_linky"
+        ])
+    }
+
     @Test func formatsStateValues() throws {
         let json = """
         {
@@ -105,6 +163,43 @@ struct HATVTests {
         #expect(state.friendlyName == "Outdoor temperature")
         #expect(state.displayState.contains("21"))
         #expect(state.displayState.contains("°C"))
+    }
+
+    @Test func formatsLightAndWeatherStateValues() throws {
+        let lightJSON = """
+        {
+          "entity_id": "light.table_a_manger",
+          "state": "on",
+          "attributes": {
+            "friendly_name": "Table a manger",
+            "brightness": 128
+          },
+          "last_changed": null,
+          "last_updated": null
+        }
+        """
+
+        let weatherJSON = """
+        {
+          "entity_id": "weather.capcir",
+          "state": "partly_cloudy",
+          "attributes": {
+            "friendly_name": "Capcir",
+            "temperature": 11.5
+          },
+          "last_changed": null,
+          "last_updated": null
+        }
+        """
+
+        let light = try JSONDecoder().decode(HAEntityState.self, from: Data(lightJSON.utf8))
+        let weather = try JSONDecoder().decode(HAEntityState.self, from: Data(weatherJSON.utf8))
+
+        #expect(light.brightnessPercent == 50)
+        #expect(light.displayState == "50%")
+        #expect(weather.displayState.contains("11"))
+        #expect(weather.displayState.contains("°"))
+        #expect(weather.subtitle == "Partly Cloudy")
     }
 
     @Test func persistsTokenForCurrentRuntime() throws {

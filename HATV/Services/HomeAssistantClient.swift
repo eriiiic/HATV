@@ -40,6 +40,27 @@ nonisolated struct HAInstanceInfo: Codable, Sendable {
     }
 }
 
+nonisolated struct HAHistorySample: Identifiable, Equatable, Sendable {
+    let timestamp: Date
+    let value: Double
+
+    var id: Date { timestamp }
+}
+
+private nonisolated struct HAHistoryState: Decodable, Sendable {
+    let entityID: String
+    let state: String
+    let lastChanged: String?
+    let lastUpdated: String?
+
+    enum CodingKeys: String, CodingKey {
+        case entityID = "entity_id"
+        case state
+        case lastChanged = "last_changed"
+        case lastUpdated = "last_updated"
+    }
+}
+
 actor HomeAssistantClient {
     private let baseURL: URL
     private let token: String
@@ -92,6 +113,44 @@ actor HomeAssistantClient {
     func fetchStates() async throws -> [HAEntityState] {
         let result = try await callWebSocket(type: "get_states")
         return try decode([HAEntityState].self, from: result)
+    }
+
+    func fetchHistory(entityID: String, hours: Int) async throws -> [HAHistorySample] {
+        let endDate = Date()
+        let startDate = endDate.addingTimeInterval(-Double(max(hours, 1)) * 3600)
+        let formatter = Self.historyDateFormatter
+        let encodedStart = formatter.string(from: startDate).addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
+
+        guard let encodedStart else {
+            throw HomeAssistantClientError.invalidURL
+        }
+
+        var components = URLComponents(url: absoluteURL(for: "/api/history/period/\(encodedStart)"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [
+            URLQueryItem(name: "filter_entity_id", value: entityID),
+            URLQueryItem(name: "end_time", value: formatter.string(from: endDate)),
+            URLQueryItem(name: "minimal_response", value: "1"),
+            URLQueryItem(name: "significant_changes_only", value: "0")
+        ]
+
+        guard let url = components?.url else {
+            throw HomeAssistantClientError.invalidURL
+        }
+
+        let data = try await requestData(at: url)
+        let rawHistory = try JSONDecoder().decode([[HAHistoryState]].self, from: data)
+
+        return rawHistory
+            .flatMap { $0 }
+            .compactMap { state in
+                guard let value = Double(state.state),
+                      let timestamp = Self.parseHistoryDate(state.lastChanged ?? state.lastUpdated) else {
+                    return nil
+                }
+
+                return HAHistorySample(timestamp: timestamp, value: value)
+            }
+            .sorted { $0.timestamp < $1.timestamp }
     }
 
     func subscribe(
@@ -185,6 +244,11 @@ actor HomeAssistantClient {
 
     private func request<T: Decodable>(_ path: String, as type: T.Type) async throws -> T {
         let targetURL = absoluteURL(for: path)
+        let data = try await requestData(at: targetURL)
+        return try JSONDecoder().decode(type, from: data)
+    }
+
+    private func requestData(at targetURL: URL) async throws -> Data {
         var request = URLRequest(url: targetURL)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
@@ -196,7 +260,7 @@ actor HomeAssistantClient {
             throw HomeAssistantClientError.invalidResponse
         }
 
-        return try JSONDecoder().decode(type, from: data)
+        return data
     }
 
     private func ensureConnected() async throws {
@@ -269,7 +333,7 @@ actor HomeAssistantClient {
                         message.merging(["id": .number(Double(messageID))], uniquingKeysWith: { _, new in new })
                     )
                 } catch {
-                    await self.resumePendingCall(messageID, with: error)
+                    self.resumePendingCall(messageID, with: error)
                 }
             }
         }
@@ -375,6 +439,27 @@ actor HomeAssistantClient {
     private func decode<T: Decodable>(_ type: T.Type, from result: JSONValue) throws -> T {
         let data = try JSONEncoder().encode(result)
         return try JSONDecoder().decode(type, from: data)
+    }
+
+    private static let historyDateFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    private static let historyFallbackDateFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+
+    private static func parseHistoryDate(_ value: String?) -> Date? {
+        guard let value else {
+            return nil
+        }
+
+        return historyDateFormatter.date(from: value)
+            ?? historyFallbackDateFormatter.date(from: value)
     }
 }
 
