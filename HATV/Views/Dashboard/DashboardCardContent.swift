@@ -278,6 +278,28 @@ struct DashboardCardContent: View {
                     endPoint: .bottom
                 )
 
+                VStack {
+                    HStack {
+                        Spacer()
+
+                        HStack(spacing: 8) {
+                            Circle()
+                                .fill(Color.red)
+                                .frame(width: 10, height: 10)
+
+                            Text("LIVE")
+                                .font(.subheadline.weight(.bold))
+                        }
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(Color.black.opacity(0.32), in: Capsule())
+                    }
+
+                    Spacer()
+                }
+                .padding(20)
+
                 VStack(alignment: .leading, spacing: 10) {
                     Text(state?.friendlyName ?? primaryTitle(for: state))
                         .font(.title2.bold())

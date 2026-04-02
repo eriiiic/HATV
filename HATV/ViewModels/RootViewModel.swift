@@ -207,6 +207,20 @@ final class RootViewModel {
         cameraStreamURLs[entityID]
     }
 
+    func loadCameraStreamURL(for entityID: String, refresh: Bool = false) async throws -> URL {
+        guard let client else {
+            throw HomeAssistantClientError.missingSocket
+        }
+
+        if !refresh, let cachedURL = cameraStreamURLs[entityID] {
+            return cachedURL
+        }
+
+        let streamURL = try await client.signedCameraStreamURL(entityID: entityID)
+        cameraStreamURLs[entityID] = streamURL
+        return streamURL
+    }
+
     func historySamples(for entityID: String, hours: Int) -> [HAHistorySample] {
         historySamplesByKey[historyKey(entityID: entityID, hours: hours)] ?? []
     }
