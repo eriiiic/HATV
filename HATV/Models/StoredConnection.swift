@@ -11,6 +11,8 @@ final class StoredConnection {
     var selectedDashboardID: String?
     var selectedDashboardURLPath: String?
     var selectedDashboardTitle: String?
+    var selectedViewPath: String?
+    var selectedViewTitle: String?
     var autoLaunchDashboard: Bool
     var createdAt: Date
     var updatedAt: Date
@@ -22,6 +24,8 @@ final class StoredConnection {
         selectedDashboardID: String? = nil,
         selectedDashboardURLPath: String? = nil,
         selectedDashboardTitle: String? = nil,
+        selectedViewPath: String? = nil,
+        selectedViewTitle: String? = nil,
         autoLaunchDashboard: Bool = true,
         createdAt: Date = .now,
         updatedAt: Date = .now
@@ -32,6 +36,8 @@ final class StoredConnection {
         self.selectedDashboardID = selectedDashboardID
         self.selectedDashboardURLPath = selectedDashboardURLPath
         self.selectedDashboardTitle = selectedDashboardTitle
+        self.selectedViewPath = selectedViewPath
+        self.selectedViewTitle = selectedViewTitle
         self.autoLaunchDashboard = autoLaunchDashboard
         self.createdAt = createdAt
         self.updatedAt = updatedAt

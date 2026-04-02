@@ -118,6 +118,10 @@ nonisolated struct HALovelaceConfig: Decodable, Sendable {
     var allCards: [HAAnyConfig] {
         views.flatMap(\.allCards)
     }
+
+    func preferredViewIndex(path: String?, title: String?) -> Int? {
+        views.firstIndex { $0.matchesStoredSelection(path: path, title: title) }
+    }
 }
 
 nonisolated struct HALovelaceView: Decodable, Identifiable, Sendable {
@@ -162,9 +166,24 @@ nonisolated struct HALovelaceView: Decodable, Identifiable, Sendable {
     }
 
     func matchesNavigationPath(_ candidate: String) -> Bool {
-        let trimmedCandidate = candidate.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        let trimmedPath = (path ?? "").trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let trimmedCandidate = candidate.trimmingCharacters(in: CharacterSet(charactersIn: "/")).lowercased()
+        let trimmedPath = (path ?? "").trimmingCharacters(in: CharacterSet(charactersIn: "/")).lowercased()
         return trimmedCandidate == trimmedPath || trimmedCandidate == displayTitle.lowercased()
+    }
+
+    func matchesStoredSelection(path: String?, title: String?) -> Bool {
+        let storedPath = path?.trimmingCharacters(in: CharacterSet(charactersIn: "/")).lowercased()
+        let currentPath = self.path?.trimmingCharacters(in: CharacterSet(charactersIn: "/")).lowercased()
+
+        if let storedPath, !storedPath.isEmpty, storedPath == currentPath {
+            return true
+        }
+
+        guard let title, !title.isEmpty else {
+            return false
+        }
+
+        return displayTitle.compare(title, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
     }
 }
 

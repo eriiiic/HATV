@@ -87,6 +87,30 @@ struct HATVTests {
         #expect(config.isStrategyDashboard)
     }
 
+    @Test func restoresPreferredViewUsingSavedPathOrTitle() throws {
+        let json = """
+        {
+          "views": [
+            {
+              "title": "Overview",
+              "path": "overview",
+              "cards": []
+            },
+            {
+              "title": "Cameras",
+              "path": "cams",
+              "cards": []
+            }
+          ]
+        }
+        """
+
+        let config = try JSONDecoder().decode(HALovelaceConfig.self, from: Data(json.utf8))
+
+        #expect(config.preferredViewIndex(path: "cams", title: nil) == 1)
+        #expect(config.preferredViewIndex(path: nil, title: "overview") == 0)
+    }
+
     @Test func parsesRoomSummaryCardsWithEntityIdentifiers() throws {
         let json = """
         {

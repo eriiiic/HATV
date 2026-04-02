@@ -8,6 +8,8 @@ struct DashboardScreen: View {
     let changeConnection: () -> Void
 
     @State private var presentedCamera: PresentedCamera?
+    @State private var isChromeVisible = true
+    @State private var chromeAutoHideTask: Task<Void, Never>?
 
     private let columns = [
         GridItem(.flexible(), spacing: 28),
@@ -15,50 +17,86 @@ struct DashboardScreen: View {
     ]
 
     var body: some View {
-        VStack(spacing: 24) {
-            header
+        ZStack(alignment: .top) {
+            dashboardContent
+                .padding(.top, isChromeVisible ? 184 : 8)
 
-            if let currentView = viewModel.currentView {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 32) {
-                        if currentView.sections.isEmpty {
-                            cardGrid(for: currentView.cards)
-                        } else {
-                            ForEach(currentView.sections) { section in
-                                VStack(alignment: .leading, spacing: 18) {
-                                    if let title = section.title, !title.isEmpty {
-                                        Text(title)
-                                            .font(.title.bold())
-                                            .foregroundStyle(.white)
-                                    }
-
-                                    cardGrid(for: section.cards)
-                                }
-                            }
-                        }
-                    }
-                    .padding(.bottom, 48)
-                }
-            } else {
-                VStack(spacing: 14) {
-                    Text("This dashboard is empty")
-                        .font(.title.bold())
-                        .foregroundStyle(.white)
-
-                    Text("Pick another dashboard or add cards in Home Assistant.")
-                        .foregroundStyle(.white.opacity(0.72))
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            if isChromeVisible {
+                header
+                    .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
         .padding(.horizontal, 64)
         .padding(.vertical, 40)
+        .animation(.easeInOut(duration: 0.28), value: isChromeVisible)
+        .onAppear {
+            revealChrome()
+        }
+        .onDisappear {
+            cancelChromeAutoHide()
+        }
+        .onChange(of: viewModel.selectedViewIndex) { _, _ in
+            revealChrome()
+        }
+        .onChange(of: presentedCamera) { _, camera in
+            if camera == nil {
+                revealChrome()
+            } else {
+                cancelChromeAutoHide()
+            }
+        }
+        .onPlayPauseCommand {
+            revealChrome()
+        }
+        .onExitCommand {
+            if isChromeVisible {
+                showDashboards()
+            } else {
+                revealChrome()
+            }
+        }
         .fullScreenCover(item: $presentedCamera) { camera in
             CameraFullScreenView(
                 title: camera.title,
                 entityID: camera.entityID,
                 viewModel: viewModel
             )
+        }
+    }
+
+    @ViewBuilder
+    private var dashboardContent: some View {
+        if let currentView = viewModel.currentView {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 32) {
+                    if currentView.sections.isEmpty {
+                        cardGrid(for: currentView.cards)
+                    } else {
+                        ForEach(currentView.sections) { section in
+                            VStack(alignment: .leading, spacing: 18) {
+                                if let title = section.title, !title.isEmpty {
+                                    Text(title)
+                                        .font(.title.bold())
+                                        .foregroundStyle(.white)
+                                }
+
+                                cardGrid(for: section.cards)
+                            }
+                        }
+                    }
+                }
+                .padding(.bottom, 48)
+            }
+        } else {
+            VStack(spacing: 14) {
+                Text("This dashboard is empty")
+                    .font(.title.bold())
+                    .foregroundStyle(.white)
+
+                Text("Pick another dashboard or add cards in Home Assistant.")
+                    .foregroundStyle(.white.opacity(0.72))
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
@@ -95,6 +133,7 @@ struct DashboardScreen: View {
                     ForEach(viewModel.dashboardConfig?.views ?? []) { view in
                         Button {
                             viewModel.selectView(view)
+                            revealChrome()
                         } label: {
                             Text(view.displayTitle)
                                 .font(.headline.weight(.bold))
@@ -111,6 +150,16 @@ struct DashboardScreen: View {
                 }
             }
         }
+        .padding(.bottom, 20)
+        .background(alignment: .top) {
+            LinearGradient(
+                colors: [.black.opacity(0.42), .clear],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: 220)
+            .ignoresSafeArea(edges: .top)
+        }
     }
 
     @ViewBuilder
@@ -121,11 +170,38 @@ struct DashboardScreen: View {
                     card: card,
                     viewModel: viewModel,
                     openCamera: { entityID, title in
+                        revealChrome()
                         presentedCamera = PresentedCamera(entityID: entityID, title: title)
                     }
                 )
             }
         }
+    }
+
+    private func revealChrome() {
+        withAnimation(.easeOut(duration: 0.24)) {
+            isChromeVisible = true
+        }
+        scheduleChromeAutoHide()
+    }
+
+    private func scheduleChromeAutoHide() {
+        cancelChromeAutoHide()
+        chromeAutoHideTask = Task {
+            try? await Task.sleep(for: .seconds(7))
+            guard !Task.isCancelled else { return }
+
+            await MainActor.run {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    isChromeVisible = false
+                }
+            }
+        }
+    }
+
+    private func cancelChromeAutoHide() {
+        chromeAutoHideTask?.cancel()
+        chromeAutoHideTask = nil
     }
 }
 
@@ -139,7 +215,7 @@ private struct DashboardCardView: View {
     }
 }
 
-private struct PresentedCamera: Identifiable {
+private struct PresentedCamera: Identifiable, Equatable {
     let entityID: String
     let title: String
 
@@ -155,6 +231,8 @@ private struct CameraFullScreenView: View {
     @State private var playbackState: CameraPlaybackState = .loading
     @State private var errorMessage: String?
     @State private var reloadToken = UUID()
+    @State private var isChromeVisible = true
+    @State private var chromeAutoHideTask: Task<Void, Never>?
 
     var body: some View {
         ZStack {
@@ -180,23 +258,36 @@ private struct CameraFullScreenView: View {
                 loadingOverlay
             }
 
-            VStack(spacing: 0) {
-                LinearGradient(
-                    colors: [.black.opacity(0.72), .clear],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .frame(height: 180)
-                .overlay(alignment: .top) {
-                    header
-                }
+            if shouldShowChrome {
+                VStack(spacing: 0) {
+                    LinearGradient(
+                        colors: [.black.opacity(0.72), .clear],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: 180)
+                    .overlay(alignment: .top) {
+                        header
+                    }
 
-                Spacer()
+                    Spacer()
+                }
+                .ignoresSafeArea()
+                .transition(.move(edge: .top).combined(with: .opacity))
             }
-            .ignoresSafeArea()
         }
+        .animation(.easeInOut(duration: 0.28), value: shouldShowChrome)
         .task(id: reloadToken) {
             await loadStream(refresh: streamURL != nil)
+        }
+        .onAppear {
+            revealChrome()
+        }
+        .onDisappear {
+            cancelChromeAutoHide()
+        }
+        .onChange(of: playbackState) { _, newValue in
+            updateChromeVisibility(for: newValue)
         }
     }
 
@@ -291,6 +382,10 @@ private struct CameraFullScreenView: View {
         }
     }
 
+    private var shouldShowChrome: Bool {
+        isChromeVisible || playbackState != .playing || errorMessage != nil || streamURL == nil
+    }
+
     private func loadStream(refresh: Bool) async {
         let previousURL = streamURL
         playbackState = .loading
@@ -303,6 +398,50 @@ private struct CameraFullScreenView: View {
             playbackState = .failed(error.localizedDescription)
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func updateChromeVisibility(for state: CameraPlaybackState) {
+        switch state {
+        case .playing:
+            scheduleChromeAutoHide()
+        case .idle, .loading, .failed:
+            revealChrome()
+        }
+    }
+
+    private func revealChrome() {
+        withAnimation(.easeOut(duration: 0.24)) {
+            isChromeVisible = true
+        }
+
+        if playbackState == .playing, errorMessage == nil, streamURL != nil {
+            scheduleChromeAutoHide()
+        } else {
+            cancelChromeAutoHide()
+        }
+    }
+
+    private func scheduleChromeAutoHide() {
+        cancelChromeAutoHide()
+        chromeAutoHideTask = Task {
+            try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled else { return }
+
+            await MainActor.run {
+                guard playbackState == .playing, errorMessage == nil, streamURL != nil else {
+                    return
+                }
+
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    isChromeVisible = false
+                }
+            }
+        }
+    }
+
+    private func cancelChromeAutoHide() {
+        chromeAutoHideTask?.cancel()
+        chromeAutoHideTask = nil
     }
 }
 

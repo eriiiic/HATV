@@ -35,6 +35,8 @@ final class RootViewModel {
     private var stateSubscriptionID: Int?
     private var lovelaceSubscriptionID: Int?
     private var loadingHistoryKeys: Set<String> = []
+    private var activeConnection: StoredConnection?
+    private var activeModelContext: ModelContext?
 
     var currentView: HALovelaceView? {
         guard let dashboardConfig, dashboardConfig.views.indices.contains(selectedViewIndex) else {
@@ -46,6 +48,8 @@ final class RootViewModel {
     func bootstrap(with storedConnection: StoredConnection?, modelContext: ModelContext) async {
         guard !didBootstrap else { return }
         didBootstrap = true
+        activeConnection = storedConnection
+        activeModelContext = modelContext
 
         let debugOverride = DebugHomeAssistantOverride.load()
 
@@ -109,6 +113,8 @@ final class RootViewModel {
 
     func connect(modelContext: ModelContext, storedConnection: StoredConnection?) async {
         errorMessage = nil
+        activeConnection = storedConnection
+        activeModelContext = modelContext
 
         let trimmedName = connectionName.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedURL = serverURLString.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -127,6 +133,7 @@ final class RootViewModel {
                 in: modelContext,
                 existing: storedConnection
             )
+            activeConnection = persisted
             try tokenStore.save(trimmedToken, account: persisted.id)
             accessToken = trimmedToken
 
@@ -148,14 +155,25 @@ final class RootViewModel {
         storedConnection: StoredConnection?,
         modelContext: ModelContext
     ) async {
+        activeConnection = storedConnection ?? activeConnection
+        activeModelContext = modelContext
         selectedDashboard = dashboard
 
-        if let storedConnection {
+        if let storedConnection = activeConnection {
+            let isSameDashboard =
+                storedConnection.selectedDashboardID == dashboard.id
+                || storedConnection.selectedDashboardURLPath == dashboard.normalizedURLPath
+
+            if !isSameDashboard {
+                storedConnection.selectedViewPath = nil
+                storedConnection.selectedViewTitle = nil
+            }
+
             storedConnection.selectedDashboardID = dashboard.id
             storedConnection.selectedDashboardURLPath = dashboard.normalizedURLPath
             storedConnection.selectedDashboardTitle = dashboard.title
             storedConnection.updatedAt = .now
-            try? modelContext.save()
+            persistConnection()
         }
 
         await reloadSelectedDashboard()
@@ -171,7 +189,17 @@ final class RootViewModel {
 
         do {
             dashboardConfig = try await client.fetchDashboardConfig(urlPath: selectedDashboard.normalizedURLPath)
-            selectedViewIndex = 0
+
+            if let preferredIndex = dashboardConfig?.preferredViewIndex(
+                path: activeConnection?.selectedViewPath,
+                title: activeConnection?.selectedViewTitle
+            ) {
+                selectedViewIndex = preferredIndex
+            } else {
+                selectedViewIndex = 0
+            }
+
+            persistCurrentViewSelection()
             screen = .dashboard
             await preloadCameraURLs()
         } catch {
@@ -190,7 +218,7 @@ final class RootViewModel {
     func selectView(_ view: HALovelaceView) {
         guard let dashboardConfig else { return }
         if let index = dashboardConfig.views.firstIndex(where: { $0.id == view.id }) {
-            selectedViewIndex = index
+            applySelectedView(at: index)
         }
     }
 
@@ -381,7 +409,7 @@ final class RootViewModel {
             return
         }
 
-        selectedViewIndex = index
+        applySelectedView(at: index)
     }
 
     private func connectSession(
@@ -394,6 +422,7 @@ final class RootViewModel {
         isBusy = true
         statusMessage = "Connecting to \(name)…"
         defer { isBusy = false }
+        activeConnection = storedConnection ?? activeConnection
 
         await client?.disconnect()
 
@@ -557,6 +586,8 @@ final class RootViewModel {
                 in: modelContext,
                 existing: nil
             )
+            activeConnection = persisted
+            activeModelContext = modelContext
             try tokenStore.save(debugOverride.accessToken, account: persisted.id)
 
             if debugOverride.autoConnect {
@@ -600,5 +631,27 @@ final class RootViewModel {
 
     private func historyKey(entityID: String, hours: Int) -> String {
         "\(entityID)|\(hours)"
+    }
+
+    private func applySelectedView(at index: Int) {
+        guard let dashboardConfig, dashboardConfig.views.indices.contains(index) else {
+            return
+        }
+
+        selectedViewIndex = index
+        persistCurrentViewSelection()
+    }
+
+    private func persistCurrentViewSelection() {
+        guard let activeConnection else { return }
+
+        activeConnection.selectedViewPath = currentView?.path
+        activeConnection.selectedViewTitle = currentView?.displayTitle
+        activeConnection.updatedAt = .now
+        persistConnection()
+    }
+
+    private func persistConnection() {
+        try? activeModelContext?.save()
     }
 }
