@@ -1,6 +1,6 @@
 import Foundation
 
-nonisolated struct HADashboardSummary: Codable, Identifiable, Equatable, Sendable {
+nonisolated struct HADashboardSummary: Decodable, Identifiable, Equatable, Sendable {
     let id: String
     let urlPath: String
     let requireAdmin: Bool
@@ -21,6 +21,25 @@ nonisolated struct HADashboardSummary: Codable, Identifiable, Equatable, Sendabl
         case filename
     }
 
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let urlPath = try container.decodeIfPresent(String.self, forKey: .urlPath) ?? ""
+        let title = try container.decodeIfPresent(String.self, forKey: .title) ?? "Dashboard"
+        let filename = try container.decodeIfPresent(String.self, forKey: .filename)
+
+        self.urlPath = urlPath
+        self.requireAdmin = try container.decodeIfPresent(Bool.self, forKey: .requireAdmin) ?? false
+        self.showInSidebar = try container.decodeIfPresent(Bool.self, forKey: .showInSidebar) ?? true
+        self.icon = try container.decodeIfPresent(String.self, forKey: .icon)
+        self.title = title
+        self.mode = try container.decodeIfPresent(String.self, forKey: .mode) ?? "storage"
+        self.filename = filename
+        self.id = try container.decodeIfPresent(String.self, forKey: .id)
+            ?? (urlPath.isEmpty ? nil : urlPath)
+            ?? filename
+            ?? title
+    }
+
     var normalizedURLPath: String? {
         urlPath.isEmpty ? nil : urlPath
     }
@@ -35,6 +54,13 @@ nonisolated struct HALovelaceConfig: Decodable, Sendable {
         case background
         case views
         case strategy
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        background = try container.decodeIfPresent(String.self, forKey: .background)
+        views = try container.decodeIfPresent([HALovelaceView].self, forKey: .views) ?? []
+        strategy = try container.decodeIfPresent(JSONValue.self, forKey: .strategy)
     }
 
     var isStrategyDashboard: Bool {

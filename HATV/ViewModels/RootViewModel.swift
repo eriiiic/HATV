@@ -41,12 +41,14 @@ final class RootViewModel {
         return dashboardConfig.views[selectedViewIndex]
     }
 
-    func bootstrap(with storedConnection: StoredConnection?) async {
+    func bootstrap(with storedConnection: StoredConnection?, modelContext: ModelContext) async {
         guard !didBootstrap else { return }
         didBootstrap = true
 
+        let debugOverride = DebugHomeAssistantOverride.load()
+
         guard let storedConnection else {
-            screen = .connection
+            await bootstrapWithoutStoredConnection(debugOverride, modelContext: modelContext)
             return
         }
 
@@ -54,22 +56,52 @@ final class RootViewModel {
         serverURLString = storedConnection.baseURLString
 
         do {
-            guard let token = try tokenStore.load(account: storedConnection.id), !token.isEmpty else {
-                screen = .connection
+            if let token = try tokenStore.load(account: storedConnection.id), !token.isEmpty {
+                accessToken = token
+                try await connectSession(
+                    name: storedConnection.name,
+                    baseURLString: storedConnection.baseURLString,
+                    token: token,
+                    storedConnection: storedConnection,
+                    autoLaunchSelection: storedConnection.autoLaunchDashboard
+                )
                 return
             }
 
-            accessToken = token
-            try await connectSession(
-                name: storedConnection.name,
-                baseURLString: storedConnection.baseURLString,
-                token: token,
-                storedConnection: storedConnection,
-                autoLaunchSelection: storedConnection.autoLaunchDashboard
-            )
+            if let debugOverride, canApply(debugOverride, to: storedConnection) {
+                connectionName = debugOverride.name
+                serverURLString = debugOverride.baseURLString
+                accessToken = debugOverride.accessToken
+
+                storedConnection.name = debugOverride.name
+                storedConnection.baseURLString = debugOverride.baseURLString
+                storedConnection.updatedAt = .now
+                try? modelContext.save()
+                try tokenStore.save(debugOverride.accessToken, account: storedConnection.id)
+
+                if debugOverride.autoConnect {
+                    try await connectSession(
+                        name: storedConnection.name,
+                        baseURLString: storedConnection.baseURLString,
+                        token: debugOverride.accessToken,
+                        storedConnection: storedConnection,
+                        autoLaunchSelection: storedConnection.autoLaunchDashboard
+                    )
+                } else {
+                    screen = .connection
+                }
+
+                return
+            }
+
+            if let debugOverride {
+                apply(debugOverride)
+            }
+
+            screen = .connection
         } catch {
             screen = .connection
-            errorMessage = error.localizedDescription
+            present(error, context: "Startup")
         }
     }
 
@@ -104,7 +136,7 @@ final class RootViewModel {
                 autoLaunchSelection: persisted.autoLaunchDashboard
             )
         } catch {
-            errorMessage = error.localizedDescription
+            present(error, context: "Connection")
             screen = .connection
         }
     }
@@ -141,7 +173,7 @@ final class RootViewModel {
             screen = .dashboard
             await preloadCameraURLs()
         } catch {
-            errorMessage = error.localizedDescription
+            present(error, context: "Dashboard")
         }
     }
 
@@ -215,7 +247,7 @@ final class RootViewModel {
                 try await performDefaultAction(for: fallbackEntityID)
             }
         } catch {
-            errorMessage = error.localizedDescription
+            present(error, context: "Action")
         }
     }
 
@@ -372,7 +404,7 @@ final class RootViewModel {
             let state = try JSONDecoder().decode(HAEntityState.self, from: encoded)
             entityStates[state.entityID] = state
         } catch {
-            errorMessage = error.localizedDescription
+            present(error, context: "Live update")
         }
     }
 
@@ -408,5 +440,64 @@ final class RootViewModel {
                 cameraStreamURLs[entityID] = try? await client.signedCameraStreamURL(entityID: entityID)
             }
         }
+    }
+
+    private func bootstrapWithoutStoredConnection(
+        _ debugOverride: DebugHomeAssistantOverride?,
+        modelContext: ModelContext
+    ) async {
+        guard let debugOverride else {
+            screen = .connection
+            return
+        }
+
+        apply(debugOverride)
+
+        do {
+            let persisted = upsertConnection(
+                named: debugOverride.name,
+                baseURLString: debugOverride.baseURLString,
+                in: modelContext,
+                existing: nil
+            )
+            try tokenStore.save(debugOverride.accessToken, account: persisted.id)
+
+            if debugOverride.autoConnect {
+                try await connectSession(
+                    name: persisted.name,
+                    baseURLString: persisted.baseURLString,
+                    token: debugOverride.accessToken,
+                    storedConnection: persisted,
+                    autoLaunchSelection: persisted.autoLaunchDashboard
+                )
+            } else {
+                screen = .connection
+            }
+        } catch {
+            screen = .connection
+            present(error, context: "Startup")
+        }
+    }
+
+    private func apply(_ debugOverride: DebugHomeAssistantOverride) {
+        connectionName = debugOverride.name
+        serverURLString = debugOverride.baseURLString
+        accessToken = debugOverride.accessToken
+    }
+
+    private func canApply(_ debugOverride: DebugHomeAssistantOverride, to connection: StoredConnection) -> Bool {
+        if connection.baseURLString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return true
+        }
+
+        let current = normalizedURL(from: connection.baseURLString)?.absoluteString
+        let debug = normalizedURL(from: debugOverride.baseURLString)?.absoluteString
+        return current == debug
+    }
+
+    private func present(_ error: Error, context: String) {
+        let message = error.userFacingMessage(context: context)
+        errorMessage = message
+        print("[HATV] \(message)")
     }
 }

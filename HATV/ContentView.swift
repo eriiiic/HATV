@@ -73,7 +73,7 @@ struct ContentView: View {
             }
         }
         .task {
-            await viewModel.bootstrap(with: storedConnection)
+            await viewModel.bootstrap(with: storedConnection, modelContext: modelContext)
         }
         .alert(
             "Something Needs Attention",
