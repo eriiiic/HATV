@@ -230,12 +230,16 @@ actor HomeAssistantClient {
             ]
         )
         let stream = try decode(HAStreamResponse.self, from: result)
-        return try await signedPath(for: stream.url)
+        return absoluteURL(for: stream.url)
     }
 
     func absoluteURL(for path: String) -> URL {
         if let absolute = URL(string: path), absolute.scheme != nil {
             return absolute
+        }
+
+        if let resolved = URL(string: path, relativeTo: relativeResolutionBaseURL())?.absoluteURL {
+            return resolved
         }
 
         let trimmedPath = path.hasPrefix("/") ? String(path.dropFirst()) : path
@@ -311,6 +315,20 @@ actor HomeAssistantClient {
         let currentPath = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         components.path = currentPath.isEmpty ? "/api/websocket" : "/\(currentPath)/api/websocket"
         return components.url
+    }
+
+    private func relativeResolutionBaseURL() -> URL {
+        guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
+            return baseURL
+        }
+
+        if components.path.isEmpty {
+            components.path = "/"
+        } else if !components.path.hasSuffix("/") {
+            components.path += "/"
+        }
+
+        return components.url ?? baseURL
     }
 
     private func callWebSocket(type: String, payload: JSONDictionary = [:]) async throws -> JSONValue {

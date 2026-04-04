@@ -181,8 +181,8 @@ struct DashboardCardContent: View {
                                     .foregroundStyle(state?.isActive == true ? .green : .white.opacity(0.72))
                             }
                             .frame(maxWidth: .infinity, minHeight: 170)
-                            .padding(16)
-                            .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                            .padding(14)
+                            .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                         }
                         .buttonStyle(.plain)
                     }
@@ -193,6 +193,7 @@ struct DashboardCardContent: View {
 
     private var nestedGridCard: some View {
         let accent = accentColor(for: entityState)
+        let visibleChildCards = card.childCards.filter(viewModel.shouldDisplayCard)
 
         return cardContainer(accent: accent, minHeight: 260) {
             VStack(alignment: .leading, spacing: 18) {
@@ -206,7 +207,7 @@ struct DashboardCardContent: View {
                     columns: Array(repeating: GridItem(.flexible(), spacing: 18), count: max(card.columns, 1)),
                     spacing: 18
                 ) {
-                    ForEach(card.childCards) { child in
+                    ForEach(visibleChildCards) { child in
                         DashboardCardContent(card: child, viewModel: viewModel, openCamera: openCamera)
                     }
                 }
@@ -217,6 +218,7 @@ struct DashboardCardContent: View {
     @ViewBuilder
     private func stackCard(axis: Axis) -> some View {
         let accent = accentColor(for: entityState)
+        let visibleChildCards = card.childCards.filter(viewModel.shouldDisplayCard)
 
         cardContainer(accent: accent, minHeight: 220) {
             VStack(alignment: .leading, spacing: 18) {
@@ -228,13 +230,13 @@ struct DashboardCardContent: View {
 
                 if axis == .horizontal {
                     HStack(alignment: .top, spacing: 18) {
-                        ForEach(card.childCards) { child in
+                        ForEach(visibleChildCards) { child in
                             DashboardCardContent(card: child, viewModel: viewModel, openCamera: openCamera)
                         }
                     }
                 } else {
                     VStack(spacing: 18) {
-                        ForEach(card.childCards) { child in
+                        ForEach(visibleChildCards) { child in
                             DashboardCardContent(card: child, viewModel: viewModel, openCamera: openCamera)
                         }
                     }
@@ -411,7 +413,7 @@ struct DashboardCardContent: View {
                 if history.count > 1 {
                     DashboardTrendChart(samples: history, accent: accent)
                 } else {
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .fill(Color.white.opacity(0.06))
                         .frame(height: 120)
                         .overlay {
@@ -808,7 +810,7 @@ struct DashboardCardContent: View {
                 .font(.headline.weight(.bold))
                 .foregroundStyle(.white)
                 .frame(width: 38, height: 38)
-                .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.name ?? state?.friendlyName ?? item.entityID)
@@ -829,15 +831,15 @@ struct DashboardCardContent: View {
                 .foregroundStyle(state?.isActive == true ? .green : .white.opacity(0.78))
         }
         .padding(14)
-        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private func iconBadge(symbolName: String) -> some View {
         Image(systemName: symbolName)
             .font(.headline.weight(.bold))
             .foregroundStyle(.white)
-            .frame(width: 48, height: 48)
-            .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .frame(width: 44, height: 44)
+            .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private func cardContainer<Content: View>(
@@ -847,23 +849,14 @@ struct DashboardCardContent: View {
     ) -> some View {
         content()
             .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .topLeading)
-            .padding(22)
+            .padding(18)
             .background(
-                ZStack {
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .fill(.ultraThinMaterial)
-
-                    LinearGradient(
-                        colors: [accent.opacity(0.18), .clear, .black.opacity(0.08)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                }
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color.white.opacity(0.055))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .strokeBorder(.white.opacity(0.08))
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(accent.opacity(0.16))
             )
     }
 
@@ -979,6 +972,9 @@ struct DashboardCameraTile: View {
     let subtitle: String
     let detail: String
     let previewURL: URL?
+    var badgeText: String = "LIVE"
+    var tint: Color = .cyan
+    var isDimmed = false
     let action: () -> Void
 
     var body: some View {
@@ -1005,10 +1001,15 @@ struct DashboardCameraTile: View {
                 }
 
                 LinearGradient(
-                    colors: [.clear, .black.opacity(0.88)],
+                    colors: [.clear, .black.opacity(0.78)],
                     startPoint: .top,
                     endPoint: .bottom
                 )
+
+                if isDimmed {
+                    Rectangle()
+                        .fill(Color.black.opacity(0.32))
+                }
 
                 VStack {
                     HStack {
@@ -1016,25 +1017,25 @@ struct DashboardCameraTile: View {
 
                         HStack(spacing: 8) {
                             Circle()
-                                .fill(Color.red)
+                                .fill(tint)
                                 .frame(width: 8, height: 8)
 
-                            Text("LIVE")
+                            Text(badgeText)
                                 .font(.caption.weight(.bold))
                         }
                         .foregroundStyle(.white)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(Color.black.opacity(0.34), in: Capsule())
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(Color.black.opacity(0.26), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                     }
 
                     Spacer()
                 }
-                .padding(16)
+                .padding(14)
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text(title)
-                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                        .font(.system(size: 22, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                         .multilineTextAlignment(.leading)
                         .lineLimit(2)
@@ -1050,11 +1051,11 @@ struct DashboardCameraTile: View {
                 }
                 .padding(18)
             }
-            .frame(maxWidth: .infinity, minHeight: 220)
-            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .frame(maxWidth: .infinity, minHeight: 208)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .strokeBorder(.white.opacity(0.10))
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(tint.opacity(0.18))
             )
         }
         .buttonStyle(.plain)
@@ -1073,7 +1074,7 @@ private struct DashboardMetricPill: View {
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(.white)
                 .frame(width: 28, height: 28)
-                .background(tint.opacity(0.24), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .background(tint.opacity(0.24), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
@@ -1088,8 +1089,8 @@ private struct DashboardMetricPill: View {
             }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(Color.white.opacity(0.05), in: Capsule())
+        .padding(.vertical, 9)
+        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }
 
@@ -1104,9 +1105,9 @@ private struct DashboardControlButton: View {
             Label(title, systemImage: systemImage)
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(.white)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(tint.opacity(0.18), in: Capsule())
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(tint.opacity(0.18), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(.plain)
     }
@@ -1128,10 +1129,10 @@ private struct DashboardChipPill: View {
                 .foregroundStyle(.white)
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(tint.opacity(0.18), in: Capsule())
+        .padding(.vertical, 9)
+        .background(tint.opacity(0.18), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(
-            Capsule()
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .strokeBorder(.white.opacity(0.10))
         )
     }

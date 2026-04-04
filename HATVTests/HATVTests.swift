@@ -277,6 +277,68 @@ struct HATVTests {
         #expect(viewModel.allCameraStates.map(\.friendlyName) == ["Driveway", "Front Door"])
     }
 
+    @Test func preservesQueryStringWhenResolvingRelativeCameraURLs() async throws {
+        let client = HomeAssistantClient(baseURL: URL(string: "https://ha.example.com")!, token: "debug")
+        let url = await client.absoluteURL(for: "/api/hls/playlist.m3u8?authSig=abc123&part=1")
+
+        #expect(url.absoluteString == "https://ha.example.com/api/hls/playlist.m3u8?authSig=abc123&part=1")
+    }
+
+    @Test @MainActor func hidesCameraTilesAndCameraCards() throws {
+        let drivewayJSON = """
+        {
+          "entity_id": "camera.driveway",
+          "state": "streaming",
+          "attributes": {
+            "friendly_name": "Driveway"
+          },
+          "last_changed": null,
+          "last_updated": null
+        }
+        """
+
+        let frontDoorJSON = """
+        {
+          "entity_id": "camera.front_door",
+          "state": "idle",
+          "attributes": {
+            "friendly_name": "Front Door"
+          },
+          "last_changed": null,
+          "last_updated": null
+        }
+        """
+
+        let viewModel = RootViewModel()
+        let driveway = try JSONDecoder().decode(HAEntityState.self, from: Data(drivewayJSON.utf8))
+        let frontDoor = try JSONDecoder().decode(HAEntityState.self, from: Data(frontDoorJSON.utf8))
+
+        viewModel.entityStates = [
+            driveway.entityID: driveway,
+            frontDoor.entityID: frontDoor
+        ]
+        viewModel.hiddenCameraEntityIDs = ["camera.front_door"]
+
+        let hiddenCameraCard = try JSONDecoder().decode(HAAnyConfig.self, from: Data("""
+        {
+          "type": "picture-entity",
+          "entity": "camera.front_door"
+        }
+        """.utf8))
+
+        let visibleCameraCard = try JSONDecoder().decode(HAAnyConfig.self, from: Data("""
+        {
+          "type": "picture-entity",
+          "entity": "camera.driveway"
+        }
+        """.utf8))
+
+        #expect(viewModel.visibleCameraStates.map(\.entityID) == ["camera.driveway"])
+        #expect(viewModel.hiddenCameraStates.map(\.entityID) == ["camera.front_door"])
+        #expect(viewModel.shouldDisplayCard(hiddenCameraCard) == false)
+        #expect(viewModel.shouldDisplayCard(visibleCameraCard) == true)
+    }
+
     @Test func persistsTokenForCurrentRuntime() throws {
         let store = KeychainTokenStore()
         let account = "test-\(UUID().uuidString)"

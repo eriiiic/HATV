@@ -24,6 +24,7 @@ final class RootViewModel {
     var dashboardConfig: HALovelaceConfig?
     var selectedViewIndex = 0
     var isShowingVideoHub = false
+    var hiddenCameraEntityIDs: Set<String> = []
     var entityStates: [String: HAEntityState] = [:]
     var cameraPreviewURLs: [String: URL] = [:]
     var cameraStreamURLs: [String: URL] = [:]
@@ -40,6 +41,7 @@ final class RootViewModel {
     private var loadingHistoryKeys: Set<String> = []
     private var activeConnection: StoredConnection?
     private var activeModelContext: ModelContext?
+    private let defaults = UserDefaults.standard
 
     var currentView: HALovelaceView? {
         guard let dashboardConfig, dashboardConfig.views.indices.contains(selectedViewIndex) else {
@@ -54,6 +56,14 @@ final class RootViewModel {
             .sorted { lhs, rhs in
                 lhs.friendlyName.localizedCaseInsensitiveCompare(rhs.friendlyName) == .orderedAscending
             }
+    }
+
+    var visibleCameraStates: [HAEntityState] {
+        allCameraStates.filter { !hiddenCameraEntityIDs.contains($0.entityID) }
+    }
+
+    var hiddenCameraStates: [HAEntityState] {
+        allCameraStates.filter { hiddenCameraEntityIDs.contains($0.entityID) }
     }
 
     var lightsOnCount: Int {
@@ -73,6 +83,7 @@ final class RootViewModel {
         didBootstrap = true
         activeConnection = storedConnection
         activeModelContext = modelContext
+        loadHiddenCameraPreferences()
 
         let debugOverride = DebugHomeAssistantOverride.load()
 
@@ -138,6 +149,7 @@ final class RootViewModel {
         errorMessage = nil
         activeConnection = storedConnection
         activeModelContext = modelContext
+        loadHiddenCameraPreferences()
 
         let trimmedName = connectionName.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedURL = serverURLString.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -270,6 +282,33 @@ final class RootViewModel {
 
     func cameraStreamURL(for entityID: String) -> URL? {
         cameraStreamURLs[entityID]
+    }
+
+    func isCameraHidden(_ entityID: String?) -> Bool {
+        guard let entityID else { return false }
+        return hiddenCameraEntityIDs.contains(entityID)
+    }
+
+    func hideCamera(_ entityID: String) {
+        hiddenCameraEntityIDs.insert(entityID)
+        persistHiddenCameraPreferences()
+    }
+
+    func unhideCamera(_ entityID: String) {
+        hiddenCameraEntityIDs.remove(entityID)
+        persistHiddenCameraPreferences()
+    }
+
+    func shouldDisplayCard(_ card: HAAnyConfig) -> Bool {
+        if let cameraEntityID = card.cameraEntityID, isCameraHidden(cameraEntityID) {
+            return false
+        }
+
+        if !card.childCards.isEmpty {
+            return card.childCards.contains(where: shouldDisplayCard)
+        }
+
+        return true
     }
 
     func loadCameraStreamURL(for entityID: String, refresh: Bool = false) async throws -> URL {
@@ -484,6 +523,7 @@ final class RootViewModel {
         historySamplesByKey = [:]
         loadingHistoryKeys.removeAll()
         self.dashboards = dashboards.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+        loadHiddenCameraPreferences()
 
         try await beginSubscriptions(with: nextClient)
 
@@ -698,12 +738,27 @@ final class RootViewModel {
         return Array(
             Set(
                 dashboardConfig.allCards.compactMap { card in
-                    guard let cameraID = card.cameraEntityID, state(for: cameraID)?.domain == "camera" else {
+                    guard let cameraID = card.cameraEntityID,
+                          !hiddenCameraEntityIDs.contains(cameraID),
+                          state(for: cameraID)?.domain == "camera" else {
                         return nil
                     }
                     return cameraID
                 }
             )
         )
+    }
+
+    private func loadHiddenCameraPreferences() {
+        let values = defaults.stringArray(forKey: hiddenCameraPreferenceKey()) ?? []
+        hiddenCameraEntityIDs = Set(values)
+    }
+
+    private func persistHiddenCameraPreferences() {
+        defaults.set(Array(hiddenCameraEntityIDs).sorted(), forKey: hiddenCameraPreferenceKey())
+    }
+
+    private func hiddenCameraPreferenceKey() -> String {
+        "hatv.hidden-cameras.\(activeConnection?.id ?? StoredConnection.defaultID)"
     }
 }
