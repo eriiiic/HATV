@@ -414,6 +414,46 @@ nonisolated struct HAAnyConfig: Decodable, Identifiable, Sendable {
         max(raw["hours_to_show"]?.intValue ?? 24, 1)
     }
 
+    var weatherForecastType: HAWeatherForecastType {
+        HAWeatherForecastType(rawValue: raw["forecast_type"]?.stringValue ?? "") ?? .daily
+    }
+
+    var weatherShowForecast: Bool {
+        raw["show_forecast"]?.boolValue ?? true
+    }
+
+    var weatherRoundTemperature: Bool {
+        raw["round_temperature"]?.boolValue ?? false
+    }
+
+    var weatherSecondaryInfoAttribute: String? {
+        raw["secondary_info_attribute"]?.stringValue
+    }
+
+    var gaugeMinValue: Double {
+        raw["min"]?.doubleValue ?? 0
+    }
+
+    var gaugeMaxValue: Double {
+        raw["max"]?.doubleValue ?? 100
+    }
+
+    var gaugeUsesNeedle: Bool {
+        raw["needle"]?.boolValue ?? false
+    }
+
+    var buttonShowsName: Bool {
+        raw["show_name"]?.boolValue ?? true
+    }
+
+    var buttonShowsState: Bool {
+        raw["show_state"]?.boolValue ?? false
+    }
+
+    var buttonShowsIcon: Bool {
+        raw["show_icon"]?.boolValue ?? true
+    }
+
     var chips: [HAChipItem] {
         raw["chips"]?.arrayValue?.compactMap { value in
             guard let chip = value.objectValue else {

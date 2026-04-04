@@ -14,10 +14,10 @@ struct DashboardScreen: View {
     @State private var isShowingHiddenVideoCameras = false
 
     private let dashboardColumns = [
-        GridItem(.adaptive(minimum: 360, maximum: 460), spacing: 20, alignment: .top)
+        GridItem(.adaptive(minimum: 420, maximum: 520), spacing: 20, alignment: .top)
     ]
     private let videoColumns = [
-        GridItem(.adaptive(minimum: 300, maximum: 380), spacing: 18, alignment: .top)
+        GridItem(.adaptive(minimum: 280, maximum: 340), spacing: 16, alignment: .top)
     ]
 
     var body: some View {
@@ -193,7 +193,7 @@ struct DashboardScreen: View {
 
     @ViewBuilder
     private func cardGrid(for cards: [HAAnyConfig]) -> some View {
-        LazyVGrid(columns: dashboardColumns, alignment: .leading, spacing: 20) {
+        LazyVGrid(columns: dashboardColumns, alignment: .leading, spacing: 18) {
             ForEach(cards.filter(viewModel.shouldDisplayCard)) { card in
                 DashboardCardView(
                     card: card,

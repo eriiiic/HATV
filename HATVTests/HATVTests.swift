@@ -224,6 +224,7 @@ struct HATVTests {
         #expect(weather.displayState.contains("11"))
         #expect(weather.displayState.contains("°"))
         #expect(weather.subtitle == "Partly Cloudy")
+        #expect(weather.formattedStateDescription == "Partly Cloudy")
     }
 
     @Test @MainActor func sortsVideoHubCamerasAlphabetically() throws {
@@ -284,6 +285,53 @@ struct HATVTests {
         #expect(url.absoluteString == "https://ha.example.com/api/hls/playlist.m3u8?authSig=abc123&part=1")
     }
 
+    @Test func decodesWeatherForecastServiceResponse() throws {
+        let json = """
+        {
+          "changed_states": [],
+          "service_response": {
+            "weather.home": {
+              "forecast": [
+                {
+                  "condition": "partlycloudy",
+                  "datetime": "2026-04-04T10:00:00+00:00",
+                  "temperature": 21.9,
+                  "templow": 6.8,
+                  "humidity": 53
+                }
+              ]
+            }
+          }
+        }
+        """
+
+        let response = try JSONDecoder().decode(HAWeatherForecastResponse.self, from: Data(json.utf8))
+        let forecast = try #require(response.serviceResponse["weather.home"]?.forecast.first)
+
+        #expect(forecast.condition == "partlycloudy")
+        #expect(forecast.temperature == 21.9)
+        #expect(forecast.templow == 6.8)
+        #expect(forecast.id == "2026-04-04T10:00:00+00:00")
+    }
+
+    @Test func readsWeatherForecastCardOptions() throws {
+        let card = try JSONDecoder().decode(HAAnyConfig.self, from: Data("""
+        {
+          "type": "weather-forecast",
+          "entity": "weather.home",
+          "forecast_type": "hourly",
+          "show_forecast": false,
+          "round_temperature": true,
+          "secondary_info_attribute": "humidity"
+        }
+        """.utf8))
+
+        #expect(card.weatherForecastType == .hourly)
+        #expect(card.weatherShowForecast == false)
+        #expect(card.weatherRoundTemperature == true)
+        #expect(card.weatherSecondaryInfoAttribute == "humidity")
+    }
+
     @Test @MainActor func hidesCameraTilesAndCameraCards() throws {
         let drivewayJSON = """
         {
@@ -337,6 +385,17 @@ struct HATVTests {
         #expect(viewModel.hiddenCameraStates.map(\.entityID) == ["camera.front_door"])
         #expect(viewModel.shouldDisplayCard(hiddenCameraCard) == false)
         #expect(viewModel.shouldDisplayCard(visibleCameraCard) == true)
+    }
+
+    @Test @MainActor func hidesEmptyHeadingCards() throws {
+        let card = try JSONDecoder().decode(HAAnyConfig.self, from: Data("""
+        {
+          "type": "heading",
+          "icon": "mdi:sparkles"
+        }
+        """.utf8))
+
+        #expect(RootViewModel().shouldDisplayCard(card) == false)
     }
 
     @Test func persistsTokenForCurrentRuntime() throws {

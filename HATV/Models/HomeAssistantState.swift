@@ -82,14 +82,12 @@ nonisolated struct HAEntityState: Codable, Identifiable, Equatable, Sendable {
             return "\(temperature.formatted(.number.precision(.fractionLength(0...1))))°"
         }
 
-        return state
-            .replacingOccurrences(of: "_", with: " ")
-            .capitalized
+        return formattedStateDescription
     }
 
     var subtitle: String? {
         if domain == "weather" {
-            return state.replacingOccurrences(of: "_", with: " ").capitalized
+            return formattedStateDescription
         }
 
         if domain == "media_player" {
@@ -105,6 +103,19 @@ nonisolated struct HAEntityState: Codable, Identifiable, Equatable, Sendable {
         }
 
         return nil
+    }
+
+    var formattedStateDescription: String {
+        state
+            .replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+            .capitalized
+    }
+
+    var temperatureUnit: String {
+        attributes["temperature_unit"]?.stringValue
+            ?? attributes["unit_of_measurement"]?.stringValue
+            ?? "°"
     }
 
     var numericState: Double? {
@@ -129,6 +140,10 @@ nonisolated struct HAEntityState: Codable, Identifiable, Equatable, Sendable {
 
     var humidity: Int? {
         attributes["humidity"]?.intValue
+    }
+
+    var weatherTemperature: Double? {
+        domain == "weather" ? attributes["temperature"]?.doubleValue : nil
     }
 
     var mediaTitle: String? {

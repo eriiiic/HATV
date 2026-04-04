@@ -153,6 +153,20 @@ actor HomeAssistantClient {
             .sorted { $0.timestamp < $1.timestamp }
     }
 
+    func fetchWeatherForecast(
+        entityID: String,
+        type: HAWeatherForecastType = .daily
+    ) async throws -> [HAWeatherForecastEntry] {
+        let body = try JSONEncoder().encode([
+            "entity_id": entityID,
+            "type": type.rawValue
+        ])
+        let url = absoluteURL(for: "/api/services/weather/get_forecasts?return_response")
+        let data = try await requestData(at: url, method: "POST", body: body)
+        let response = try JSONDecoder().decode(HAWeatherForecastResponse.self, from: data)
+        return response.serviceResponse[entityID]?.forecast ?? []
+    }
+
     func subscribe(
         eventType: String,
         handler: @escaping @Sendable (JSONDictionary) async -> Void
@@ -252,10 +266,20 @@ actor HomeAssistantClient {
         return try JSONDecoder().decode(type, from: data)
     }
 
-    private func requestData(at targetURL: URL) async throws -> Data {
+    private func requestData(
+        at targetURL: URL,
+        method: String = "GET",
+        body: Data? = nil
+    ) async throws -> Data {
         var request = URLRequest(url: targetURL)
+        request.httpMethod = method
+        request.httpBody = body
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        if body != nil {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
 
         let (data, response) = try await urlSession.data(for: request)
 

@@ -29,6 +29,7 @@ final class RootViewModel {
     var cameraPreviewURLs: [String: URL] = [:]
     var cameraStreamURLs: [String: URL] = [:]
     var historySamplesByKey: [String: [HAHistorySample]] = [:]
+    var weatherForecastsByKey: [String: [HAWeatherForecastEntry]] = [:]
     var isBusy = false
     var statusMessage = "Loading…"
     var errorMessage: String?
@@ -39,6 +40,7 @@ final class RootViewModel {
     private var stateSubscriptionID: Int?
     private var lovelaceSubscriptionID: Int?
     private var loadingHistoryKeys: Set<String> = []
+    private var loadingWeatherForecastKeys: Set<String> = []
     private var activeConnection: StoredConnection?
     private var activeModelContext: ModelContext?
     private let defaults = UserDefaults.standard
@@ -304,6 +306,14 @@ final class RootViewModel {
             return false
         }
 
+        if card.type == "heading",
+           card.primaryText == nil,
+           card.secondaryText == nil,
+           card.entityID == nil,
+           card.navigationPath == nil {
+            return false
+        }
+
         if !card.childCards.isEmpty {
             return card.childCards.contains(where: shouldDisplayCard)
         }
@@ -329,6 +339,10 @@ final class RootViewModel {
         historySamplesByKey[historyKey(entityID: entityID, hours: hours)] ?? []
     }
 
+    func weatherForecast(for entityID: String, type: HAWeatherForecastType) -> [HAWeatherForecastEntry] {
+        weatherForecastsByKey[weatherForecastKey(entityID: entityID, type: type)] ?? []
+    }
+
     func loadHistoryIfNeeded(for entityID: String, hours: Int) async {
         guard let client else { return }
 
@@ -344,6 +358,24 @@ final class RootViewModel {
             historySamplesByKey[key] = try await client.fetchHistory(entityID: entityID, hours: hours)
         } catch {
             present(error, context: "History")
+        }
+    }
+
+    func loadWeatherForecastIfNeeded(for entityID: String, type: HAWeatherForecastType) async {
+        guard let client else { return }
+
+        let key = weatherForecastKey(entityID: entityID, type: type)
+        guard weatherForecastsByKey[key] == nil, !loadingWeatherForecastKeys.contains(key) else {
+            return
+        }
+
+        loadingWeatherForecastKeys.insert(key)
+        defer { loadingWeatherForecastKeys.remove(key) }
+
+        do {
+            weatherForecastsByKey[key] = try await client.fetchWeatherForecast(entityID: entityID, type: type)
+        } catch {
+            print("[HATV] Weather forecast: \(error.localizedDescription)")
         }
     }
 
@@ -521,7 +553,9 @@ final class RootViewModel {
         instanceInfo = info
         entityStates = Dictionary(uniqueKeysWithValues: states.map { ($0.entityID, $0) })
         historySamplesByKey = [:]
+        weatherForecastsByKey = [:]
         loadingHistoryKeys.removeAll()
+        loadingWeatherForecastKeys.removeAll()
         self.dashboards = dashboards.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
         loadHiddenCameraPreferences()
 
@@ -703,6 +737,10 @@ final class RootViewModel {
 
     private func historyKey(entityID: String, hours: Int) -> String {
         "\(entityID)|\(hours)"
+    }
+
+    private func weatherForecastKey(entityID: String, type: HAWeatherForecastType) -> String {
+        "\(entityID)|\(type.rawValue)"
     }
 
     private func applySelectedView(at index: Int) {
