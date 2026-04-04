@@ -12,24 +12,24 @@ struct DashboardScreen: View {
     @State private var chromeAutoHideTask: Task<Void, Never>?
 
     private let dashboardColumns = [
-        GridItem(.adaptive(minimum: 430, maximum: 560), spacing: 28, alignment: .top)
+        GridItem(.adaptive(minimum: 360, maximum: 460), spacing: 20, alignment: .top)
     ]
     private let videoColumns = [
-        GridItem(.adaptive(minimum: 360, maximum: 480), spacing: 24, alignment: .top)
+        GridItem(.adaptive(minimum: 300, maximum: 380), spacing: 18, alignment: .top)
     ]
 
     var body: some View {
         ZStack(alignment: .top) {
             dashboardContent
-                .padding(.top, isChromeVisible ? 188 : 20)
+                .padding(.top, isChromeVisible ? 142 : 12)
 
             if isChromeVisible {
                 header
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
-        .padding(.horizontal, 64)
-        .padding(.vertical, 40)
+        .padding(.horizontal, 44)
+        .padding(.vertical, 28)
         .animation(.easeInOut(duration: 0.28), value: isChromeVisible)
         .onAppear {
             revealChrome()
@@ -72,7 +72,7 @@ struct DashboardScreen: View {
     @ViewBuilder
     private var dashboardContent: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 32) {
+            VStack(alignment: .leading, spacing: 22) {
                 KioskOverviewBanner(
                     title: heroTitle,
                     subtitle: heroSubtitle,
@@ -90,11 +90,12 @@ struct DashboardScreen: View {
                         cardGrid(for: currentView.cards)
                     } else {
                         ForEach(currentView.sections) { section in
-                            VStack(alignment: .leading, spacing: 18) {
+                            VStack(alignment: .leading, spacing: 14) {
                                 if let title = section.title, !title.isEmpty {
                                     Text(title)
-                                        .font(.system(size: 28, weight: .bold, design: .rounded))
+                                        .font(.system(size: 22, weight: .bold, design: .rounded))
                                         .foregroundStyle(.white)
+                                        .padding(.leading, 2)
                                 }
 
                                 cardGrid(for: section.cards)
@@ -105,52 +106,56 @@ struct DashboardScreen: View {
                     emptyDashboardState
                 }
             }
-            .padding(.bottom, 48)
+            .padding(.bottom, 32)
         }
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            HStack(alignment: .top, spacing: 24) {
-                VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .center, spacing: 18) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(viewModel.selectedDashboard?.title ?? "Dashboard")
-                        .font(.system(size: 44, weight: .bold, design: .rounded))
+                        .font(.system(size: 30, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
 
                     if let instanceInfo = viewModel.instanceInfo {
                         Text("\(instanceInfo.locationName) • \(instanceInfo.timeZone)")
-                            .font(.headline.weight(.medium))
-                            .foregroundStyle(.white.opacity(0.72))
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.60))
                     }
                 }
 
                 Spacer()
 
-                HStack(spacing: 14) {
+                HStack(spacing: 10) {
                     Button("Dashboards", action: showDashboards)
-                        .buttonStyle(.borderedProminent)
-                        .tint(.white.opacity(0.16))
+                        .buttonStyle(.bordered)
+                        .tint(.white.opacity(0.18))
 
                     Button("Connection", action: changeConnection)
-                        .buttonStyle(.borderedProminent)
-                        .tint(.white.opacity(0.16))
+                        .buttonStyle(.bordered)
+                        .tint(.white.opacity(0.18))
                 }
             }
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 14) {
+                HStack(spacing: 10) {
                     Button {
                         Task { await viewModel.showVideoHub() }
                         revealChrome()
                     } label: {
                         Label("Video", systemImage: "video.fill")
-                            .font(.headline.weight(.bold))
+                            .font(.subheadline.weight(.bold))
                             .foregroundStyle(.white)
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 12)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
                             .background(
-                                (viewModel.isShowingVideoHub ? Color.white.opacity(0.20) : Color.white.opacity(0.08)),
+                                (viewModel.isShowingVideoHub ? Color.white.opacity(0.16) : Color.white.opacity(0.06)),
                                 in: Capsule()
+                            )
+                            .overlay(
+                                Capsule()
+                                    .strokeBorder(.white.opacity(viewModel.isShowingVideoHub ? 0.16 : 0.08))
                             )
                     }
                     .buttonStyle(.plain)
@@ -161,13 +166,17 @@ struct DashboardScreen: View {
                             revealChrome()
                         } label: {
                             Text(view.displayTitle)
-                                .font(.headline.weight(.bold))
+                                .font(.subheadline.weight(.bold))
                                 .foregroundStyle(.white)
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 12)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
                                 .background(
-                                    ((!viewModel.isShowingVideoHub && view.id == viewModel.currentView?.id) ? Color.white.opacity(0.20) : Color.white.opacity(0.08)),
+                                    ((!viewModel.isShowingVideoHub && view.id == viewModel.currentView?.id) ? Color.white.opacity(0.16) : Color.white.opacity(0.06)),
                                     in: Capsule()
+                                )
+                                .overlay(
+                                    Capsule()
+                                        .strokeBorder(.white.opacity((!viewModel.isShowingVideoHub && view.id == viewModel.currentView?.id) ? 0.16 : 0.08))
                                 )
                         }
                         .buttonStyle(.plain)
@@ -175,21 +184,27 @@ struct DashboardScreen: View {
                 }
             }
         }
-        .padding(.bottom, 20)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .strokeBorder(.white.opacity(0.08))
+        )
         .background(alignment: .top) {
             LinearGradient(
-                colors: [.black.opacity(0.42), .clear],
+                colors: [.black.opacity(0.30), .clear],
                 startPoint: .top,
                 endPoint: .bottom
             )
-            .frame(height: 220)
+            .frame(height: 150)
             .ignoresSafeArea(edges: .top)
         }
     }
 
     @ViewBuilder
     private func cardGrid(for cards: [HAAnyConfig]) -> some View {
-        LazyVGrid(columns: dashboardColumns, alignment: .leading, spacing: 28) {
+        LazyVGrid(columns: dashboardColumns, alignment: .leading, spacing: 20) {
             ForEach(cards) { card in
                 DashboardCardView(
                     card: card,
@@ -205,26 +220,27 @@ struct DashboardScreen: View {
     @ViewBuilder
     private var videoHubContent: some View {
         if viewModel.allCameraStates.isEmpty {
-            VStack(spacing: 14) {
+            VStack(spacing: 12) {
                 Text("No cameras are available")
-                    .font(.title.bold())
-                    .foregroundStyle(.white)
-
-                Text("Add camera entities in Home Assistant to populate the video wall.")
-                    .foregroundStyle(.white.opacity(0.72))
-            }
-            .frame(maxWidth: .infinity, minHeight: 320)
-        } else {
-            VStack(alignment: .leading, spacing: 20) {
-                Text("All video streams")
                     .font(.system(size: 28, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
 
-                Text("Jump into any live feed and stay in fullscreen until you need the controls.")
+                Text("Add camera entities in Home Assistant to populate the video wall.")
                     .font(.headline.weight(.medium))
-                    .foregroundStyle(.white.opacity(0.72))
+                    .foregroundStyle(.white.opacity(0.68))
+            }
+            .frame(maxWidth: .infinity, minHeight: 320)
+        } else {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("All video streams")
+                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
 
-                LazyVGrid(columns: videoColumns, alignment: .leading, spacing: 24) {
+                Text("Jump into any live feed and stay in fullscreen until you need the controls.")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.64))
+
+                LazyVGrid(columns: videoColumns, alignment: .leading, spacing: 18) {
                     ForEach(viewModel.allCameraStates) { camera in
                         DashboardCameraTile(
                             title: camera.friendlyName,
@@ -241,13 +257,14 @@ struct DashboardScreen: View {
     }
 
     private var emptyDashboardState: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 12) {
             Text("This dashboard is empty")
-                .font(.title.bold())
+                .font(.system(size: 28, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
 
             Text("Pick another dashboard or add cards in Home Assistant.")
-                .foregroundStyle(.white.opacity(0.72))
+                .font(.headline.weight(.medium))
+                .foregroundStyle(.white.opacity(0.68))
         }
         .frame(maxWidth: .infinity, minHeight: 320)
     }
@@ -316,17 +333,17 @@ private struct KioskOverviewBanner: View {
     let accent: Color
 
     var body: some View {
-        HStack(alignment: .top, spacing: 28) {
-            VStack(alignment: .leading, spacing: 14) {
+        HStack(alignment: .top, spacing: 20) {
+            VStack(alignment: .leading, spacing: 10) {
                 Text(title)
-                    .font(.system(size: 56, weight: .bold, design: .rounded))
+                    .font(.system(size: 38, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
 
                 Text(subtitle)
-                    .font(.title3.weight(.medium))
-                    .foregroundStyle(.white.opacity(0.76))
+                    .font(.headline.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.70))
 
-                HStack(spacing: 12) {
+                HStack(spacing: 10) {
                     KioskInfoPill(title: "Cameras", value: "\(cameraCount)", tint: .cyan)
                     KioskInfoPill(title: "Lights On", value: "\(lightsOnCount)", tint: .yellow)
                     KioskInfoPill(title: "Climate", value: "\(activeClimateCount)", tint: .orange)
@@ -337,41 +354,41 @@ private struct KioskOverviewBanner: View {
             Spacer()
 
             TimelineView(.periodic(from: .now, by: 60)) { context in
-                VStack(alignment: .trailing, spacing: 8) {
+                VStack(alignment: .trailing, spacing: 6) {
                     Text(context.date, format: .dateTime.hour().minute())
-                        .font(.system(size: 54, weight: .bold, design: .rounded))
+                        .font(.system(size: 34, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
 
                     Text(context.date, format: .dateTime.weekday(.wide).month(.wide).day())
-                        .font(.headline.weight(.medium))
-                        .foregroundStyle(.white.opacity(0.74))
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.64))
                 }
-                .padding(.horizontal, 24)
-                .padding(.vertical, 22)
-                .background(accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+                .padding(.horizontal, 18)
+                .padding(.vertical, 16)
+                .background(accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
-                        .strokeBorder(.white.opacity(0.10))
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .strokeBorder(.white.opacity(0.08))
                 )
             }
         }
-        .padding(32)
+        .padding(24)
         .background(
             ZStack {
-                RoundedRectangle(cornerRadius: 34, style: .continuous)
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
                     .fill(.ultraThinMaterial)
 
                 LinearGradient(
-                    colors: [accent.opacity(0.16), .clear, .black.opacity(0.08)],
+                    colors: [accent.opacity(0.10), .clear, .black.opacity(0.06)],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
-                .clipShape(RoundedRectangle(cornerRadius: 34, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
             }
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 34, style: .continuous)
-                .strokeBorder(.white.opacity(0.12))
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .strokeBorder(.white.opacity(0.08))
         )
     }
 }
@@ -382,18 +399,18 @@ private struct KioskInfoPill: View {
     let tint: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 2) {
             Text(title)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.white.opacity(0.64))
 
             Text(value)
-                .font(.headline.weight(.bold))
+                .font(.subheadline.weight(.bold))
                 .foregroundStyle(.white)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-        .background(tint.opacity(0.22), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(tint.opacity(0.18), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
 

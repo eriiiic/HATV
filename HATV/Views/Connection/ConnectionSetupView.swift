@@ -6,44 +6,47 @@ struct ConnectionSetupView: View {
     let connect: () -> Void
 
     var body: some View {
-        HStack(spacing: 56) {
-            VStack(alignment: .leading, spacing: 28) {
+        HStack(spacing: 44) {
+            VStack(alignment: .leading, spacing: 22) {
                 Text("HATV")
-                    .font(.system(size: 92, weight: .black, design: .rounded))
+                    .font(.system(size: 72, weight: .black, design: .rounded))
                     .foregroundStyle(.white)
 
-                Text("A polished, kiosk-style Home Assistant dashboard for Apple TV.")
-                    .font(.system(size: 34, weight: .medium, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.86))
-                    .frame(maxWidth: 700, alignment: .leading)
+                Text("A clean Home Assistant dashboard for Apple TV.")
+                    .font(.system(size: 26, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.80))
+                    .frame(maxWidth: 560, alignment: .leading)
 
-                VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 14) {
                     HighlightRow(symbol: "square.grid.2x2.fill", text: "Pick an existing Lovelace dashboard")
                     HighlightRow(symbol: "video.fill", text: "Open camera feeds full screen")
-                    HighlightRow(symbol: "switch.2", text: "Control devices without editing dashboard config")
+                    HighlightRow(symbol: "switch.2", text: "Control devices without editing anything")
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: 20) {
                 Text("Connect to Home Assistant")
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                    .font(.system(size: 28, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
 
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 12) {
                     Text("Name")
-                        .foregroundStyle(.white.opacity(0.7))
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.62))
                     TextField("Home Assistant", text: $viewModel.connectionName)
                         .hatvInputStyle()
 
                     Text("Server URL")
-                        .foregroundStyle(.white.opacity(0.7))
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.62))
                     TextField("https://ha.example.com", text: $viewModel.serverURLString)
                         .textInputAutocapitalization(.never)
                         .hatvInputStyle()
 
                     Text("Long-lived access token")
-                        .foregroundStyle(.white.opacity(0.7))
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.62))
                     SecureField("Paste your Home Assistant token", text: $viewModel.accessToken)
                         .textInputAutocapitalization(.never)
                         .hatvInputStyle()
@@ -51,11 +54,12 @@ struct ConnectionSetupView: View {
 
                 if let instanceInfo = viewModel.instanceInfo {
                     Label("\(instanceInfo.locationName) • Home Assistant \(instanceInfo.version)", systemImage: "checkmark.seal.fill")
+                        .font(.headline.weight(.semibold))
                         .foregroundStyle(.green)
                 }
 
                 Button(action: connect) {
-                    HStack(spacing: 14) {
+                    HStack(spacing: 12) {
                         if viewModel.isBusy {
                             ProgressView()
                                 .tint(.black)
@@ -64,34 +68,35 @@ struct ConnectionSetupView: View {
                             .font(.headline.weight(.bold))
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 18)
-                    .background(Color.white, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .padding(.vertical, 16)
+                    .background(Color.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                     .foregroundStyle(.black)
                 }
                 .buttonStyle(.plain)
                 .disabled(viewModel.isBusy)
             }
-            .padding(36)
-            .frame(width: 720)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 32, style: .continuous))
+            .padding(28)
+            .frame(width: 620)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 32, style: .continuous)
-                    .strokeBorder(.white.opacity(0.16))
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .strokeBorder(.white.opacity(0.10))
             )
         }
-        .padding(.horizontal, 84)
+        .padding(.horizontal, 72)
+        .padding(.vertical, 40)
     }
 }
 
 private extension View {
     func hatvInputStyle() -> some View {
         self
-            .padding(.horizontal, 18)
-            .padding(.vertical, 16)
-            .background(Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.08))
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.06))
             )
             .foregroundStyle(.white)
     }
@@ -102,16 +107,16 @@ private struct HighlightRow: View {
     let text: String
 
     var body: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 14) {
             Image(systemName: symbol)
-                .font(.title3.weight(.bold))
+                .font(.headline.weight(.bold))
                 .foregroundStyle(.white)
-                .frame(width: 40, height: 40)
-                .background(Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .frame(width: 34, height: 34)
+                .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
 
             Text(text)
                 .font(.title3.weight(.semibold))
-                .foregroundStyle(.white.opacity(0.88))
+                .foregroundStyle(.white.opacity(0.82))
         }
     }
 }

@@ -12,28 +12,47 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
+            Color(red: 0.03, green: 0.06, blue: 0.10)
+                .ignoresSafeArea()
+
             LinearGradient(
                 colors: [
-                    Color(red: 0.05, green: 0.08, blue: 0.16),
-                    Color(red: 0.07, green: 0.17, blue: 0.28),
-                    Color(red: 0.04, green: 0.10, blue: 0.11)
+                    Color(red: 0.04, green: 0.09, blue: 0.15),
+                    Color(red: 0.05, green: 0.13, blue: 0.19),
+                    Color(red: 0.03, green: 0.07, blue: 0.11)
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
             .ignoresSafeArea()
 
-            Circle()
-                .fill(Color.cyan.opacity(0.16))
-                .frame(width: 720, height: 720)
-                .blur(radius: 120)
-                .offset(x: 520, y: -320)
+            RadialGradient(
+                colors: [Color.cyan.opacity(0.16), .clear],
+                center: .topTrailing,
+                startRadius: 40,
+                endRadius: 700
+            )
+            .ignoresSafeArea()
+            .offset(x: 220, y: -180)
 
-            Circle()
-                .fill(Color.blue.opacity(0.14))
-                .frame(width: 560, height: 560)
-                .blur(radius: 120)
-                .offset(x: -520, y: 320)
+            RadialGradient(
+                colors: [Color.white.opacity(0.06), .clear],
+                center: .bottomLeading,
+                startRadius: 80,
+                endRadius: 620
+            )
+            .ignoresSafeArea()
+            .offset(x: -180, y: 240)
+
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        colors: [.white.opacity(0.03), .clear, .black.opacity(0.08)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .ignoresSafeArea()
 
             switch viewModel.screen {
             case .booting:
@@ -98,20 +117,22 @@ private struct LaunchView: View {
     let statusMessage: String
 
     var body: some View {
-        VStack(spacing: 28) {
+        VStack(spacing: 22) {
             Text("HATV")
-                .font(.system(size: 84, weight: .bold, design: .rounded))
+                .font(.system(size: 72, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
 
             Text("Home Assistant companion for Apple TV")
-                .font(.title3.weight(.medium))
-                .foregroundStyle(.white.opacity(0.8))
+                .font(.system(size: 24, weight: .medium, design: .rounded))
+                .foregroundStyle(.white.opacity(0.72))
 
             ProgressView()
                 .tint(.white)
 
             Text(statusMessage)
-                .foregroundStyle(.white.opacity(0.75))
+                .font(.headline.weight(.medium))
+                .foregroundStyle(.white.opacity(0.68))
         }
+        .padding(.horizontal, 40)
     }
 }

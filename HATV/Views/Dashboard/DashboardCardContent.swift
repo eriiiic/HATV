@@ -805,39 +805,39 @@ struct DashboardCardContent: View {
 
         return HStack(spacing: 16) {
             Image(systemName: symbolName(for: state, rawIcon: item.icon, fallback: "circle.fill"))
-                .font(.title3.weight(.bold))
+                .font(.headline.weight(.bold))
                 .foregroundStyle(.white)
-                .frame(width: 44, height: 44)
-                .background(Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .frame(width: 38, height: 38)
+                .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.name ?? state?.friendlyName ?? item.entityID)
-                    .font(.headline.weight(.bold))
+                    .font(.subheadline.weight(.bold))
                     .foregroundStyle(.white)
 
                 if let subtitle = state?.subtitle {
                     Text(subtitle)
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(.white.opacity(0.68))
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.62))
                 }
             }
 
             Spacer()
 
             Text(state?.displayState ?? "Unavailable")
-                .font(.headline.weight(.bold))
+                .font(.subheadline.weight(.bold))
                 .foregroundStyle(state?.isActive == true ? .green : .white.opacity(0.78))
         }
-        .padding(18)
-        .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .padding(14)
+        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private func iconBadge(symbolName: String) -> some View {
         Image(systemName: symbolName)
-            .font(.title2.weight(.bold))
+            .font(.headline.weight(.bold))
             .foregroundStyle(.white)
-            .frame(width: 58, height: 58)
-            .background(Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .frame(width: 48, height: 48)
+            .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private func cardContainer<Content: View>(
@@ -847,23 +847,23 @@ struct DashboardCardContent: View {
     ) -> some View {
         content()
             .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .topLeading)
-            .padding(28)
+            .padding(22)
             .background(
                 ZStack {
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
                         .fill(.ultraThinMaterial)
 
                     LinearGradient(
-                        colors: [accent.opacity(0.26), .clear, .black.opacity(0.12)],
+                        colors: [accent.opacity(0.18), .clear, .black.opacity(0.08)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
-                    .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
                 }
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .strokeBorder(.white.opacity(0.12))
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .strokeBorder(.white.opacity(0.08))
             )
     }
 
@@ -995,11 +995,11 @@ struct DashboardCameraTile: View {
                             .overlay(ProgressView().tint(.white))
                     }
                 } else {
-                    Rectangle()
-                        .fill(Color.white.opacity(0.06))
-                        .overlay {
-                            Image(systemName: "video.fill")
-                                .font(.system(size: 44, weight: .bold))
+                        Rectangle()
+                            .fill(Color.white.opacity(0.06))
+                            .overlay {
+                                Image(systemName: "video.fill")
+                                .font(.system(size: 34, weight: .bold))
                                 .foregroundStyle(.white.opacity(0.72))
                         }
                 }
@@ -1017,44 +1017,44 @@ struct DashboardCameraTile: View {
                         HStack(spacing: 8) {
                             Circle()
                                 .fill(Color.red)
-                                .frame(width: 10, height: 10)
+                                .frame(width: 8, height: 8)
 
                             Text("LIVE")
-                                .font(.subheadline.weight(.bold))
+                                .font(.caption.weight(.bold))
                         }
                         .foregroundStyle(.white)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
                         .background(Color.black.opacity(0.34), in: Capsule())
                     }
 
                     Spacer()
                 }
-                .padding(20)
+                .padding(16)
 
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 8) {
                     Text(title)
-                        .font(.title2.bold())
+                        .font(.system(size: 24, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                         .multilineTextAlignment(.leading)
                         .lineLimit(2)
 
                     Text(subtitle)
-                        .font(.headline.weight(.bold))
+                        .font(.subheadline.weight(.bold))
                         .foregroundStyle(.white.opacity(0.82))
 
                     Label(detail, systemImage: "arrow.up.left.and.arrow.down.right")
-                        .font(.headline.weight(.semibold))
+                        .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.white.opacity(0.88))
                         .lineLimit(1)
                 }
-                .padding(24)
+                .padding(18)
             }
-            .frame(maxWidth: .infinity, minHeight: 260)
-            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+            .frame(maxWidth: .infinity, minHeight: 220)
+            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .strokeBorder(.white.opacity(0.14))
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .strokeBorder(.white.opacity(0.10))
             )
         }
         .buttonStyle(.plain)
@@ -1068,12 +1068,12 @@ private struct DashboardMetricPill: View {
     let tint: Color
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             Image(systemName: icon)
-                .font(.headline.weight(.bold))
+                .font(.subheadline.weight(.bold))
                 .foregroundStyle(.white)
-                .frame(width: 34, height: 34)
-                .background(tint.opacity(0.28), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .frame(width: 28, height: 28)
+                .background(tint.opacity(0.24), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
@@ -1082,14 +1082,14 @@ private struct DashboardMetricPill: View {
                     .lineLimit(1)
 
                 Text(value)
-                    .font(.headline.weight(.bold))
+                    .font(.subheadline.weight(.bold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(Color.white.opacity(0.06), in: Capsule())
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color.white.opacity(0.05), in: Capsule())
     }
 }
 
@@ -1102,11 +1102,11 @@ private struct DashboardControlButton: View {
     var body: some View {
         Button(action: action) {
             Label(title, systemImage: systemImage)
-                .font(.headline.weight(.bold))
+                .font(.subheadline.weight(.bold))
                 .foregroundStyle(.white)
-                .padding(.horizontal, 18)
-                .padding(.vertical, 14)
-                .background(tint.opacity(0.26), in: Capsule())
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(tint.opacity(0.18), in: Capsule())
         }
         .buttonStyle(.plain)
     }
@@ -1118,21 +1118,21 @@ private struct DashboardChipPill: View {
     let tint: Color
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             Image(systemName: symbolName)
-                .font(.subheadline.weight(.bold))
+                .font(.caption.weight(.bold))
                 .foregroundStyle(.white)
 
             Text(text)
-                .font(.headline.weight(.semibold))
+                .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.white)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(tint.opacity(0.24), in: Capsule())
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(tint.opacity(0.18), in: Capsule())
         .overlay(
             Capsule()
-                .strokeBorder(.white.opacity(0.14))
+                .strokeBorder(.white.opacity(0.10))
         )
     }
 }
