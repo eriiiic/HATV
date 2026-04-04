@@ -83,7 +83,7 @@ struct DashboardCardContent: View {
         return Button {
             Task { await viewModel.executePrimaryAction(for: card) }
         } label: {
-            cardContainer(accent: accent, minHeight: referencedStates.isEmpty ? 184 : 228) {
+            cardContainer(accent: accent, minHeight: referencedStates.isEmpty ? 168 : 204) {
                 VStack(alignment: .leading, spacing: 14) {
                     HStack(alignment: .top, spacing: 12) {
                         typeBadge(card.type, tint: accent)
@@ -128,7 +128,7 @@ struct DashboardCardContent: View {
     private var headingCard: some View {
         let accent = accentColor(for: nil)
 
-        return cardContainer(accent: accent, minHeight: 118) {
+        return cardContainer(accent: accent, minHeight: 90) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 12) {
                     iconBadge(symbolName: symbolName(for: nil, rawIcon: card.icon, fallback: "sparkles"))
@@ -152,23 +152,27 @@ struct DashboardCardContent: View {
     private var entitiesCard: some View {
         let accent = accentColor(for: entityState)
 
-        return cardContainer(accent: accent, minHeight: 260) {
+        return cardContainer(accent: accent, minHeight: 220) {
             VStack(alignment: .leading, spacing: 14) {
                 if let title = resolvedText(card.heading) {
                     Text(title)
-                        .font(.title2.bold())
+                        .font(.title3.bold())
                         .foregroundStyle(.white)
                         .lineLimit(2)
                 }
 
-                ForEach(card.entities, id: \.entityID) { item in
-                    Button {
-                        Task { await viewModel.executePrimaryAction(for: item) }
-                    } label: {
-                        entityRow(for: item)
+                VStack(spacing: 10) {
+                    ForEach(card.entities, id: \.entityID) { item in
+                        Button {
+                            Task { await viewModel.executePrimaryAction(for: item) }
+                        } label: {
+                            entityRow(for: item)
+                        }
+                        .buttonStyle(.plain)
+                        .focusEffectDisabled()
                     }
-                    .buttonStyle(.plain)
                 }
+                .focusSection()
             }
         }
     }
@@ -176,16 +180,16 @@ struct DashboardCardContent: View {
     private var glanceCard: some View {
         let accent = accentColor(for: entityState)
 
-        return cardContainer(accent: accent, minHeight: 250) {
+        return cardContainer(accent: accent, minHeight: 210) {
             VStack(alignment: .leading, spacing: 14) {
                 if let title = resolvedText(card.heading) {
                     Text(title)
-                        .font(.title2.bold())
+                        .font(.title3.bold())
                         .foregroundStyle(.white)
                         .lineLimit(2)
                 }
 
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 132), spacing: 12)], spacing: 12) {
+                responsiveInteractiveGrid(maxColumns: 3) {
                     ForEach(card.entities, id: \.entityID) { item in
                         let state = viewModel.state(for: item.entityID)
 
@@ -210,11 +214,16 @@ struct DashboardCardContent: View {
                                     .lineLimit(2)
                                     .multilineTextAlignment(.center)
                             }
-                            .frame(maxWidth: .infinity, minHeight: 138)
+                            .frame(maxWidth: .infinity, minHeight: 124)
                             .padding(12)
-                            .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .strokeBorder(.white.opacity(0.05))
+                            )
                         }
                         .buttonStyle(.plain)
+                        .focusEffectDisabled()
                     }
                 }
             }
@@ -225,7 +234,7 @@ struct DashboardCardContent: View {
         let accent = accentColor(for: entityState)
         let visibleChildCards = card.childCards.filter(viewModel.shouldDisplayCard)
 
-        return cardContainer(accent: accent, minHeight: 260) {
+        return cardContainer(accent: accent, minHeight: 220) {
             VStack(alignment: .leading, spacing: 18) {
                 if let title = resolvedText(card.heading) {
                     Text(title)
@@ -234,7 +243,7 @@ struct DashboardCardContent: View {
                 }
 
                 LazyVGrid(
-                    columns: Array(repeating: GridItem(.flexible(), spacing: 18), count: max(card.columns, 1)),
+                    columns: Array(repeating: GridItem(.flexible(), spacing: 14), count: min(max(card.columns, 1), 2)),
                     spacing: 18
                 ) {
                     ForEach(visibleChildCards) { child in
@@ -251,7 +260,7 @@ struct DashboardCardContent: View {
         let accent = accentColor(for: entityState)
         let visibleChildCards = card.childCards.filter(viewModel.shouldDisplayCard)
 
-        cardContainer(accent: accent, minHeight: 220) {
+        cardContainer(accent: accent, minHeight: 196) {
             VStack(alignment: .leading, spacing: 18) {
                 if let title = resolvedText(card.heading) {
                     Text(title)
@@ -307,7 +316,7 @@ struct DashboardCardContent: View {
         return Button {
             Task { await viewModel.executePrimaryAction(for: card) }
         } label: {
-            cardContainer(accent: accent, minHeight: card.isVerticalLayout ? 220 : 170) {
+            cardContainer(accent: accent, minHeight: card.isVerticalLayout ? 188 : 152) {
                 ViewThatFits(in: .horizontal) {
                     tileHorizontalLayout(state: state)
                     tileVerticalLayout(state: state)
@@ -325,7 +334,7 @@ struct DashboardCardContent: View {
         return Button {
             Task { await viewModel.executePrimaryAction(for: card) }
         } label: {
-            cardContainer(accent: accent, minHeight: 176) {
+            cardContainer(accent: accent, minHeight: 148) {
                 VStack(alignment: .leading, spacing: 14) {
                     HStack(alignment: .top) {
                         if card.buttonShowsIcon {
@@ -345,7 +354,7 @@ struct DashboardCardContent: View {
                         Text(primaryTitle(for: state))
                             .font(.system(size: 24, weight: .bold, design: .rounded))
                             .foregroundStyle(.white)
-                            .lineLimit(3)
+                            .lineLimit(2)
                             .minimumScaleFactor(0.78)
                     }
 
@@ -368,7 +377,7 @@ struct DashboardCardContent: View {
         let label = resolvedText(card.secondaryText)
 
         return AnyView(
-            cardContainer(accent: accent, minHeight: 220) {
+            cardContainer(accent: accent, minHeight: 180) {
                 VStack(alignment: .leading, spacing: 14) {
                     iconBadge(symbolName: symbolName(for: nil, rawIcon: card.icon, fallback: "text.rectangle.fill"))
 
@@ -399,14 +408,14 @@ struct DashboardCardContent: View {
         let forecasts = Array(viewModel.weatherForecast(for: entityID, type: forecastType).prefix(card.weatherShowForecast ? 5 : 0))
         let currentTemperature = state?.weatherTemperature ?? forecasts.first?.temperature
 
-        return cardContainer(accent: accent, minHeight: 260) {
+        return cardContainer(accent: accent, minHeight: card.weatherShowForecast ? 216 : 184) {
             VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .top, spacing: 14) {
+                HStack(alignment: .top, spacing: 16) {
                     VStack(alignment: .leading, spacing: 6) {
                         typeBadge("weather", tint: accent)
 
                         Text(primaryTitle(for: state))
-                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                            .font(.system(size: 24, weight: .bold, design: .rounded))
                             .foregroundStyle(.white)
                             .lineLimit(2)
                             .minimumScaleFactor(0.8)
@@ -414,61 +423,58 @@ struct DashboardCardContent: View {
                         if let subtitle = state?.subtitle {
                             Text(subtitle)
                                 .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.white.opacity(0.7))
+                                .foregroundStyle(.white.opacity(0.68))
                                 .lineLimit(1)
                         }
                     }
 
-                    Spacer()
+                    Spacer(minLength: 12)
 
-                    Image(systemName: weatherSymbolName(condition: state?.state ?? forecasts.first?.condition))
-                        .font(.system(size: 34, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.9))
-                }
+                    HStack(alignment: .top, spacing: 12) {
+                        VStack(alignment: .trailing, spacing: 4) {
+                            if let currentTemperature {
+                                Text(formatTemperature(currentTemperature, round: card.weatherRoundTemperature, unit: state?.temperatureUnit ?? "°"))
+                                    .font(.system(size: 40, weight: .bold, design: .rounded))
+                                    .foregroundStyle(.white)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.7)
+                            }
 
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .bottom, spacing: 14) {
-                        if let currentTemperature {
-                            Text(formatTemperature(currentTemperature, round: card.weatherRoundTemperature, unit: state?.temperatureUnit ?? "°"))
-                                .font(.system(size: 44, weight: .bold, design: .rounded))
-                                .foregroundStyle(.white)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.7)
+                            Text(weatherSecondaryText(state: state, forecasts: forecasts))
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.white.opacity(0.68))
+                                .multilineTextAlignment(.trailing)
+                                .lineLimit(2)
                         }
 
-                        Text(weatherSecondaryText(state: state, forecasts: forecasts))
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.white.opacity(0.72))
-                            .lineLimit(2)
-
-                        Spacer(minLength: 0)
-                    }
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        if let currentTemperature {
-                            Text(formatTemperature(currentTemperature, round: card.weatherRoundTemperature, unit: state?.temperatureUnit ?? "°"))
-                                .font(.system(size: 44, weight: .bold, design: .rounded))
-                                .foregroundStyle(.white)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.7)
-                        }
-
-                        Text(weatherSecondaryText(state: state, forecasts: forecasts))
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.white.opacity(0.72))
-                            .lineLimit(3)
+                        Image(systemName: weatherSymbolName(condition: state?.state ?? forecasts.first?.condition))
+                            .font(.system(size: 30, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.88))
                     }
                 }
 
                 if card.weatherShowForecast, !forecasts.isEmpty {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 10)], spacing: 10) {
-                        ForEach(forecasts) { forecast in
-                            WeatherForecastPill(
-                                forecast: forecast,
-                                type: forecastType,
-                                roundTemperature: card.weatherRoundTemperature,
-                                temperatureUnit: state?.temperatureUnit ?? "°"
-                            )
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 10) {
+                            ForEach(forecasts) { forecast in
+                                WeatherForecastPill(
+                                    forecast: forecast,
+                                    type: forecastType,
+                                    roundTemperature: card.weatherRoundTemperature,
+                                    temperatureUnit: state?.temperatureUnit ?? "°"
+                                )
+                            }
+                        }
+
+                        LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                            ForEach(forecasts) { forecast in
+                                WeatherForecastPill(
+                                    forecast: forecast,
+                                    type: forecastType,
+                                    roundTemperature: card.weatherRoundTemperature,
+                                    temperatureUnit: state?.temperatureUnit ?? "°"
+                                )
+                            }
                         }
                     }
                 }
@@ -488,7 +494,7 @@ struct DashboardCardContent: View {
         let maximum = max(card.gaugeMaxValue, minimum + 1)
         let tint = gaugeColor(for: currentValue)
 
-        return cardContainer(accent: accent, minHeight: 220) {
+        return cardContainer(accent: accent, minHeight: 196) {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 18) {
                     VStack(alignment: .leading, spacing: 10) {
@@ -552,7 +558,7 @@ struct DashboardCardContent: View {
         let maxValue = history.map(\.value).max()
         let showsTrend = card.type == "custom:mini-graph-card" || card.raw["graph"]?.stringValue == "line"
 
-        return cardContainer(accent: accent, minHeight: showsTrend ? 250 : 184) {
+        return cardContainer(accent: accent, minHeight: showsTrend ? 224 : 168) {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 8) {
@@ -633,7 +639,7 @@ struct DashboardCardContent: View {
         let state = entityState
         let accent = accentColor(for: state)
 
-        return cardContainer(accent: accent, minHeight: 232) {
+        return cardContainer(accent: accent, minHeight: 204) {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 8) {
@@ -692,7 +698,7 @@ struct DashboardCardContent: View {
         let current = state?.currentTemperature
         let target = state?.targetTemperature
 
-        return cardContainer(accent: accent, minHeight: 260) {
+        return cardContainer(accent: accent, minHeight: 224) {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 8) {
@@ -763,7 +769,7 @@ struct DashboardCardContent: View {
         let state = entityState
         let accent = accentColor(for: state)
 
-        return cardContainer(accent: accent, minHeight: 230) {
+        return cardContainer(accent: accent, minHeight: 204) {
             VStack(alignment: .leading, spacing: 14) {
                 HStack {
                     VStack(alignment: .leading, spacing: 8) {
@@ -832,7 +838,7 @@ struct DashboardCardContent: View {
         return Button {
             Task { await viewModel.executePrimaryAction(for: card) }
         } label: {
-            cardContainer(accent: accent, minHeight: 200) {
+            cardContainer(accent: accent, minHeight: 176) {
                 VStack(alignment: card.isVerticalLayout ? .leading : .center, spacing: 14) {
                     iconBadge(symbolName: symbolName(for: entityState, rawIcon: card.icon, fallback: "sparkles.rectangle.stack.fill"))
 
@@ -866,18 +872,16 @@ struct DashboardCardContent: View {
     private var mushroomChipsCard: some View {
         let accent = accentColor(for: entityState)
 
-        return cardContainer(accent: accent, minHeight: 150) {
+        return cardContainer(accent: accent, minHeight: 116) {
             VStack(alignment: .leading, spacing: 14) {
                 Text(primaryTitle(for: nil))
-                    .font(.title3.weight(.bold))
+                    .font(.headline.weight(.bold))
                     .foregroundStyle(.white)
                     .opacity(card.heading == nil && card.title == nil ? 0 : 1)
 
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 14) {
-                        ForEach(card.chips) { chip in
-                            chipView(chip)
-                        }
+                responsiveInteractiveGrid(maxColumns: 3) {
+                    ForEach(card.chips) { chip in
+                        chipView(chip)
                     }
                 }
             }
@@ -890,7 +894,7 @@ struct DashboardCardContent: View {
         let roomSensors = card.roomSensors.compactMap(viewModel.state)
         let topEntities = Array(card.entities.prefix(3))
 
-        return cardContainer(accent: accent, minHeight: 300) {
+        return cardContainer(accent: accent, minHeight: 244) {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 8) {
@@ -937,8 +941,10 @@ struct DashboardCardContent: View {
                             entityRow(for: item)
                         }
                         .buttonStyle(.plain)
+                        .focusEffectDisabled()
                     }
                 }
+                .focusSection()
 
                 if card.primaryAction != nil {
                     adaptiveButtonGrid {
@@ -965,6 +971,7 @@ struct DashboardCardContent: View {
                     DashboardChipPill(symbolName: symbol, text: label, tint: accentColor(for: state))
                 }
                 .buttonStyle(.plain)
+                .focusEffectDisabled()
             } else {
                 DashboardChipPill(symbolName: symbol, text: label, tint: accentColor(for: state))
             }
@@ -996,63 +1003,30 @@ struct DashboardCardContent: View {
 
     private func entityRow(for item: HAEntityItem) -> some View {
         let state = viewModel.state(for: item.entityID)
+        let symbol = symbolName(for: state, rawIcon: item.icon, fallback: "circle.fill")
+        let title = item.name ?? state?.friendlyName ?? item.entityID
+        let subtitle = state?.subtitle
+        let value = state?.displayState ?? "Unavailable"
+        let isActive = state?.isActive == true
 
         return ViewThatFits(in: .horizontal) {
-            HStack(spacing: 14) {
-                Image(systemName: symbolName(for: state, rawIcon: item.icon, fallback: "circle.fill"))
-                    .font(.headline.weight(.bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 36, height: 36)
-                    .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            DashboardEntityRowLabel(
+                symbolName: symbol,
+                title: title,
+                subtitle: subtitle,
+                value: value,
+                isActive: isActive,
+                compact: false
+            )
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(item.name ?? state?.friendlyName ?? item.entityID)
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(.white)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.8)
-
-                    if let subtitle = state?.subtitle {
-                        Text(subtitle)
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.white.opacity(0.62))
-                            .lineLimit(1)
-                    }
-                }
-
-                Spacer(minLength: 8)
-
-                Text(state?.displayState ?? "Unavailable")
-                    .font(.subheadline.weight(.bold))
-                    .foregroundStyle(state?.isActive == true ? .green : .white.opacity(0.78))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-            }
-            .padding(12)
-            .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 12) {
-                    Image(systemName: symbolName(for: state, rawIcon: item.icon, fallback: "circle.fill"))
-                        .font(.headline.weight(.bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 36, height: 36)
-                        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-
-                    Text(item.name ?? state?.friendlyName ?? item.entityID)
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(.white)
-                        .lineLimit(2)
-                }
-
-                Text(state?.displayState ?? "Unavailable")
-                    .font(.subheadline.weight(.bold))
-                    .foregroundStyle(state?.isActive == true ? .green : .white.opacity(0.78))
-                    .lineLimit(2)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(12)
-            .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            DashboardEntityRowLabel(
+                symbolName: symbol,
+                title: title,
+                subtitle: subtitle,
+                value: value,
+                isActive: isActive,
+                compact: true
+            )
         }
     }
 
@@ -1071,14 +1045,27 @@ struct DashboardCardContent: View {
     ) -> some View {
         content()
             .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .topLeading)
-            .padding(16)
+            .padding(14)
             .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color.white.opacity(0.052))
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color(red: 0.09, green: 0.13, blue: 0.18))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(accent.opacity(0.16))
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(accent.opacity(0.10))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [.white.opacity(0.02), .clear],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .mask(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    )
             )
     }
 
@@ -1088,9 +1075,9 @@ struct DashboardCardContent: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 Text(primaryTitle(for: state))
-                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .font(.system(size: 22, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
-                    .lineLimit(3)
+                    .lineLimit(2)
                     .minimumScaleFactor(0.8)
 
                 if let subtitle = secondaryTitle(for: state) {
@@ -1105,7 +1092,7 @@ struct DashboardCardContent: View {
 
             VStack(alignment: .trailing, spacing: 10) {
                 Text(state?.displayState ?? "Unavailable")
-                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                     .lineLimit(2)
                     .minimumScaleFactor(0.72)
@@ -1124,15 +1111,15 @@ struct DashboardCardContent: View {
             }
 
             Text(primaryTitle(for: state))
-                .font(.system(size: 24, weight: .bold, design: .rounded))
+                .font(.system(size: 22, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
-                .lineLimit(3)
+                .lineLimit(2)
                 .minimumScaleFactor(0.8)
 
             Spacer(minLength: 0)
 
             Text(state?.displayState ?? "Unavailable")
-                .font(.system(size: 30, weight: .bold, design: .rounded))
+                .font(.system(size: 26, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
                 .lineLimit(2)
                 .minimumScaleFactor(0.72)
@@ -1166,15 +1153,80 @@ struct DashboardCardContent: View {
     }
 
     private func adaptiveMetricGrid<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 136), spacing: 10, alignment: .top)], alignment: .leading, spacing: 10) {
-            content()
+        ViewThatFits(in: .horizontal) {
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 10, alignment: .top),
+                    GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 10, alignment: .top)
+                ],
+                alignment: .leading,
+                spacing: 10
+            ) {
+                content()
+            }
+
+            LazyVGrid(columns: [GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 10, alignment: .top)], alignment: .leading, spacing: 10) {
+                content()
+            }
         }
+        .focusSection()
     }
 
     private func adaptiveButtonGrid<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 172), spacing: 10, alignment: .top)], alignment: .leading, spacing: 10) {
-            content()
+        ViewThatFits(in: .horizontal) {
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 10, alignment: .top),
+                    GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 10, alignment: .top)
+                ],
+                alignment: .leading,
+                spacing: 10
+            ) {
+                content()
+            }
+
+            LazyVGrid(columns: [GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 10, alignment: .top)], alignment: .leading, spacing: 10) {
+                content()
+            }
         }
+        .focusSection()
+    }
+
+    private func responsiveInteractiveGrid<Content: View>(
+        maxColumns: Int,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        ViewThatFits(in: .horizontal) {
+            if maxColumns >= 3 {
+                LazyVGrid(
+                    columns: [
+                        GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 10, alignment: .top),
+                        GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 10, alignment: .top),
+                        GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 10, alignment: .top)
+                    ],
+                    alignment: .leading,
+                    spacing: 10
+                ) {
+                    content()
+                }
+            }
+
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 10, alignment: .top),
+                    GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 10, alignment: .top)
+                ],
+                alignment: .leading,
+                spacing: 10
+            ) {
+                content()
+            }
+
+            LazyVGrid(columns: [GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 10, alignment: .top)], alignment: .leading, spacing: 10) {
+                content()
+            }
+        }
+        .focusSection()
     }
 
     private func typeBadge(_ value: String, tint: Color) -> some View {
@@ -1457,6 +1509,8 @@ struct DashboardCardContent: View {
 }
 
 struct DashboardCameraTile: View {
+    @Environment(\.isFocused) private var isFocused
+
     let title: String
     let subtitle: String
     let detail: String
@@ -1469,35 +1523,17 @@ struct DashboardCameraTile: View {
     var body: some View {
         Button(action: action) {
             ZStack(alignment: .bottomLeading) {
-                if let previewURL {
-                    AsyncImage(url: previewURL) { image in
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    } placeholder: {
-                        Rectangle()
-                            .fill(Color.white.opacity(0.06))
-                            .overlay(ProgressView().tint(.white))
-                    }
-                } else {
-                        Rectangle()
-                            .fill(Color.white.opacity(0.06))
-                            .overlay {
-                                Image(systemName: "video.fill")
-                                .font(.system(size: 34, weight: .bold))
-                                .foregroundStyle(.white.opacity(0.72))
-                        }
-                }
+                cameraPreview
 
                 LinearGradient(
-                    colors: [.clear, .black.opacity(0.78)],
+                    colors: [.clear, .black.opacity(0.82)],
                     startPoint: .top,
                     endPoint: .bottom
                 )
 
                 if isDimmed {
                     Rectangle()
-                        .fill(Color.black.opacity(0.32))
+                        .fill(Color.black.opacity(0.34))
                 }
 
                 VStack {
@@ -1511,16 +1547,17 @@ struct DashboardCameraTile: View {
 
                             Text(badgeText)
                                 .font(.caption.weight(.bold))
+                                .lineLimit(1)
                         }
                         .foregroundStyle(.white)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 7)
-                        .background(Color.black.opacity(0.26), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .background(Color.black.opacity(0.28), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
                     }
 
                     Spacer()
                 }
-                .padding(14)
+                .padding(16)
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text(title)
@@ -1528,26 +1565,159 @@ struct DashboardCameraTile: View {
                         .foregroundStyle(.white)
                         .multilineTextAlignment(.leading)
                         .lineLimit(2)
+                        .minimumScaleFactor(0.82)
 
                     Text(subtitle)
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(.white.opacity(0.82))
+                        .lineLimit(1)
 
                     Label(detail, systemImage: "arrow.up.left.and.arrow.down.right")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.white.opacity(0.88))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.82))
                         .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                 }
-                .padding(18)
+                .padding(16)
             }
-            .frame(maxWidth: .infinity, minHeight: 208)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(tint.opacity(0.18))
+            .frame(maxWidth: .infinity)
+            .aspectRatio(16 / 9, contentMode: .fit)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Color(red: 0.09, green: 0.14, blue: 0.19))
             )
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(tint.opacity(isFocused ? 0.40 : 0.18), lineWidth: isFocused ? 2 : 1)
+            )
+            .shadow(color: .black.opacity(isFocused ? 0.24 : 0.10), radius: isFocused ? 24 : 14, y: 10)
+            .scaleEffect(isFocused ? 1.02 : 1)
+            .animation(.easeInOut(duration: 0.18), value: isFocused)
         }
         .buttonStyle(.plain)
+    }
+
+    private var cameraPreview: some View {
+        Group {
+            if let previewURL {
+                AsyncImage(url: previewURL) { image in
+                    image
+                        .resizable()
+                        .scaledToFill()
+                } placeholder: {
+                    placeholderPreview
+                }
+            } else {
+                placeholderPreview
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
+    }
+
+    private var placeholderPreview: some View {
+        Rectangle()
+            .fill(Color.white.opacity(0.05))
+            .overlay {
+                Image(systemName: "video.fill")
+                    .font(.system(size: 34, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.72))
+            }
+    }
+}
+
+private struct DashboardEntityRowLabel: View {
+    @Environment(\.isFocused) private var isFocused
+
+    let symbolName: String
+    let title: String
+    let subtitle: String?
+    let value: String
+    let isActive: Bool
+    let compact: Bool
+
+    var body: some View {
+        Group {
+            if compact {
+                compactLayout
+            } else {
+                horizontalLayout
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(backgroundColor, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(borderColor, lineWidth: isFocused ? 1.5 : 1)
+        )
+        .scaleEffect(isFocused ? 1.01 : 1)
+        .animation(.easeInOut(duration: 0.18), value: isFocused)
+    }
+
+    private var horizontalLayout: some View {
+        HStack(spacing: 14) {
+            iconView
+
+            VStack(alignment: .leading, spacing: 4) {
+                titleView
+
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.60))
+                        .lineLimit(1)
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            valueView(lineLimit: 1)
+        }
+    }
+
+    private var compactLayout: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                iconView
+                titleView
+            }
+
+            valueView(lineLimit: 2)
+        }
+    }
+
+    private var iconView: some View {
+        Image(systemName: symbolName)
+            .font(.headline.weight(.bold))
+            .foregroundStyle(.white)
+            .frame(width: 36, height: 36)
+            .background(Color.white.opacity(isFocused ? 0.12 : 0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private var titleView: some View {
+        Text(title)
+            .font(.subheadline.weight(.bold))
+            .foregroundStyle(.white)
+            .lineLimit(2)
+            .minimumScaleFactor(0.8)
+    }
+
+    private func valueView(lineLimit: Int) -> some View {
+        Text(value)
+            .font(.subheadline.weight(.bold))
+            .foregroundStyle(isActive ? .green : .white.opacity(0.78))
+            .lineLimit(lineLimit)
+            .minimumScaleFactor(0.7)
+    }
+
+    private var backgroundColor: Color {
+        isFocused ? Color.white.opacity(0.12) : Color.white.opacity(0.045)
+    }
+
+    private var borderColor: Color {
+        isFocused ? .white.opacity(0.24) : .white.opacity(0.06)
     }
 }
 
@@ -1579,14 +1749,16 @@ private struct DashboardMetricPill: View {
                     .minimumScaleFactor(0.72)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: 70, alignment: .leading)
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
-        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(Color.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 
 private struct DashboardControlButton: View {
+    @Environment(\.isFocused) private var isFocused
+
     let title: String
     let systemImage: String
     let tint: Color
@@ -1606,16 +1778,33 @@ private struct DashboardControlButton: View {
                     .multilineTextAlignment(.leading)
             }
             .foregroundStyle(.white)
-            .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
-            .background(tint.opacity(0.18), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .background(backgroundColor, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(borderColor, lineWidth: isFocused ? 1.5 : 1)
+            )
+            .scaleEffect(isFocused ? 1.02 : 1)
+            .animation(.easeInOut(duration: 0.18), value: isFocused)
         }
         .buttonStyle(.plain)
+        .focusEffectDisabled()
+    }
+
+    private var backgroundColor: Color {
+        isFocused ? tint.opacity(0.28) : tint.opacity(0.16)
+    }
+
+    private var borderColor: Color {
+        isFocused ? .white.opacity(0.26) : .white.opacity(0.08)
     }
 }
 
 private struct DashboardChipPill: View {
+    @Environment(\.isFocused) private var isFocused
+
     let symbolName: String
     let text: String
     let tint: Color
@@ -1632,11 +1821,21 @@ private struct DashboardChipPill: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
-        .background(tint.opacity(0.18), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(backgroundColor, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(.white.opacity(0.10))
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(borderColor, lineWidth: isFocused ? 1.5 : 1)
         )
+        .scaleEffect(isFocused ? 1.02 : 1)
+        .animation(.easeInOut(duration: 0.18), value: isFocused)
+    }
+
+    private var backgroundColor: Color {
+        isFocused ? tint.opacity(0.24) : tint.opacity(0.14)
+    }
+
+    private var borderColor: Color {
+        isFocused ? .white.opacity(0.28) : .white.opacity(0.10)
     }
 }
 
@@ -1673,8 +1872,12 @@ private struct WeatherForecastPill: View {
             }
         }
         .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .frame(minWidth: 104, maxWidth: .infinity, minHeight: 96, alignment: .leading)
+        .background(Color.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(.white.opacity(0.05))
+        )
     }
 
     private var label: String {

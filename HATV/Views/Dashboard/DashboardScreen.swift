@@ -12,18 +12,12 @@ struct DashboardScreen: View {
     @State private var chromeAutoHideTask: Task<Void, Never>?
     @State private var isManagingVideoCameras = false
     @State private var isShowingHiddenVideoCameras = false
-
-    private let dashboardColumns = [
-        GridItem(.adaptive(minimum: 420, maximum: 520), spacing: 20, alignment: .top)
-    ]
-    private let videoColumns = [
-        GridItem(.adaptive(minimum: 280, maximum: 340), spacing: 16, alignment: .top)
-    ]
+    @State private var availableContentWidth: CGFloat = 0
 
     var body: some View {
         ZStack(alignment: .top) {
             dashboardContent
-                .padding(.top, isChromeVisible ? 124 : 10)
+                .padding(.top, isChromeVisible ? 136 : 10)
 
             if isChromeVisible {
                 header
@@ -33,6 +27,10 @@ struct DashboardScreen: View {
         .padding(.horizontal, 36)
         .padding(.vertical, 24)
         .animation(.easeInOut(duration: 0.28), value: isChromeVisible)
+        .onPreferenceChange(DashboardContentWidthPreferenceKey.self) { width in
+            guard width > 0, abs(width - availableContentWidth) > 1 else { return }
+            availableContentWidth = width
+        }
         .onAppear {
             revealChrome()
         }
@@ -78,7 +76,7 @@ struct DashboardScreen: View {
     @ViewBuilder
     private var dashboardContent: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 16) {
                 KioskOverviewBanner(
                     title: heroTitle,
                     subtitle: heroSubtitle,
@@ -117,68 +115,79 @@ struct DashboardScreen: View {
                 }
             }
             .padding(.bottom, 32)
+            .background(DashboardContentWidthReader())
         }
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 16) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(viewModel.selectedDashboard?.title ?? "Dashboard")
-                        .font(.system(size: 26, weight: .bold, design: .rounded))
+                        .font(.system(size: 24, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
 
                     if let instanceInfo = viewModel.instanceInfo {
                         Text("\(instanceInfo.locationName) • \(instanceInfo.timeZone)")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.white.opacity(0.60))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.58))
                     }
                 }
 
                 Spacer()
 
                 HStack(spacing: 10) {
-                    flatHeaderButton(title: "Dashboards", action: showDashboards)
+                    DashboardHeaderActionButton(title: "Dashboards", action: showDashboards)
 
-                    flatHeaderButton(title: "Connection", action: changeConnection)
+                    DashboardHeaderActionButton(title: "Connection", action: changeConnection)
                 }
+                .focusSection()
             }
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
+                HStack(spacing: 8) {
                     Button {
                         Task { await viewModel.showVideoHub() }
                         revealChrome()
                     } label: {
-                        flatTopTab(
+                        DashboardTopTab(
                             title: "Video",
                             systemImage: "video.fill",
                             isSelected: viewModel.isShowingVideoHub
                         )
                     }
                     .buttonStyle(.plain)
+                    .focusEffectDisabled()
 
                     ForEach(viewModel.dashboardConfig?.views ?? []) { view in
                         Button {
                             viewModel.selectView(view)
                             revealChrome()
                         } label: {
-                            flatTopTab(
+                            DashboardTopTab(
                                 title: view.displayTitle,
                                 isSelected: !viewModel.isShowingVideoHub && view.id == viewModel.currentView?.id
                             )
                         }
                         .buttonStyle(.plain)
+                        .focusEffectDisabled()
                     }
                 }
+                .padding(6)
+                .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(.white.opacity(0.07))
+                )
+                .focusSection()
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(Color(red: 0.05, green: 0.10, blue: 0.15), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color(red: 0.05, green: 0.10, blue: 0.15), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(.white.opacity(0.08))
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(.white.opacity(0.07))
         )
         .background(alignment: .top) {
             LinearGradient(
@@ -193,17 +202,25 @@ struct DashboardScreen: View {
 
     @ViewBuilder
     private func cardGrid(for cards: [HAAnyConfig]) -> some View {
-        LazyVGrid(columns: dashboardColumns, alignment: .leading, spacing: 18) {
-            ForEach(cards.filter(viewModel.shouldDisplayCard)) { card in
-                DashboardCardView(
-                    card: card,
-                    viewModel: viewModel,
-                    openCamera: { entityID, title in
-                        presentCamera(entityID: entityID, title: title)
+        let visibleCards = cards.filter(viewModel.shouldDisplayCard)
+
+        Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 20) {
+            ForEach(dashboardRows(for: visibleCards)) { row in
+                GridRow(alignment: .top) {
+                    ForEach(row.items) { item in
+                        DashboardCardView(
+                            card: item.card,
+                            viewModel: viewModel,
+                            openCamera: { entityID, title in
+                                presentCamera(entityID: entityID, title: title)
+                            }
+                        )
+                        .gridCellColumns(item.span)
                     }
-                )
+                }
             }
         }
+        .focusSection()
     }
 
     @ViewBuilder
@@ -244,26 +261,31 @@ struct DashboardScreen: View {
 
                     HStack(spacing: 10) {
                         if !hiddenCameras.isEmpty {
-                            Button(isShowingHiddenVideoCameras ? "Visible" : "Hidden \(hiddenCameras.count)") {
+                            Button {
                                 isShowingHiddenVideoCameras.toggle()
                                 isManagingVideoCameras = false
+                            } label: {
+                                DashboardUtilityButtonLabel(
+                                    title: isShowingHiddenVideoCameras ? "Visible" : "Hidden \(hiddenCameras.count)",
+                                    isActive: isShowingHiddenVideoCameras
+                                )
                             }
                             .buttonStyle(.plain)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 9)
-                            .background(Color.white.opacity(isShowingHiddenVideoCameras ? 0.14 : 0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .focusEffectDisabled()
                         }
 
-                        Button(isManagingVideoCameras ? "Done" : "Manage") {
+                        Button {
                             isManagingVideoCameras.toggle()
+                        } label: {
+                            DashboardUtilityButtonLabel(
+                                title: isManagingVideoCameras ? "Done" : "Manage",
+                                isActive: isManagingVideoCameras
+                            )
                         }
                         .buttonStyle(.plain)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 9)
-                        .background(Color.white.opacity(isManagingVideoCameras ? 0.14 : 0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .focusEffectDisabled()
                     }
-                    .foregroundStyle(.white)
-                    .font(.subheadline.weight(.bold))
+                    .focusSection()
                 }
 
                 if displayedCameras.isEmpty {
@@ -281,7 +303,7 @@ struct DashboardScreen: View {
                     .frame(maxWidth: .infinity, minHeight: 240)
                     .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 } else {
-                    LazyVGrid(columns: videoColumns, alignment: .leading, spacing: 18) {
+                    LazyVGrid(columns: videoColumns(for: displayedCameras.count), alignment: .leading, spacing: 20) {
                         ForEach(displayedCameras) { camera in
                             DashboardCameraTile(
                                 title: camera.friendlyName,
@@ -312,6 +334,7 @@ struct DashboardScreen: View {
                             }
                         }
                     }
+                    .focusSection()
                 }
             }
         }
@@ -382,6 +405,152 @@ struct DashboardScreen: View {
         chromeAutoHideTask?.cancel()
         chromeAutoHideTask = nil
     }
+
+    private func videoColumns(for itemCount: Int) -> [GridItem] {
+        let count = min(maxVideoColumnCount, max(itemCount, 1))
+        return Array(
+            repeating: GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 20, alignment: .top),
+            count: count
+        )
+    }
+
+    private func dashboardRows(for cards: [HAAnyConfig]) -> [DashboardCardRow] {
+        let maxColumns = maxDashboardColumnCount
+        guard !cards.isEmpty else { return [] }
+
+        guard maxColumns > 1 else {
+            return cards.map { card in
+                DashboardCardRow(items: [DashboardCardRowItem(card: card, span: 1)])
+            }
+        }
+
+        var rows: [DashboardCardRow] = []
+        var currentItems: [DashboardCardRowItem] = []
+        var usedColumns = 0
+
+        for card in cards {
+            let preferredSpan = preferredSpan(for: card, maxColumns: maxColumns)
+
+            if usedColumns + preferredSpan > maxColumns, !currentItems.isEmpty {
+                rows.append(normalizedRow(from: currentItems, usedColumns: usedColumns, maxColumns: maxColumns))
+                currentItems = []
+                usedColumns = 0
+            }
+
+            currentItems.append(DashboardCardRowItem(card: card, span: preferredSpan))
+            usedColumns += preferredSpan
+
+            if usedColumns == maxColumns {
+                rows.append(DashboardCardRow(items: currentItems))
+                currentItems = []
+                usedColumns = 0
+            }
+        }
+
+        if !currentItems.isEmpty {
+            rows.append(normalizedRow(from: currentItems, usedColumns: usedColumns, maxColumns: maxColumns))
+        }
+
+        return rows
+    }
+
+    private func normalizedRow(
+        from items: [DashboardCardRowItem],
+        usedColumns: Int,
+        maxColumns: Int
+    ) -> DashboardCardRow {
+        guard usedColumns < maxColumns, !items.isEmpty else {
+            return DashboardCardRow(items: items)
+        }
+
+        var adjustedItems = items
+        let remainingColumns = maxColumns - usedColumns
+
+        if adjustedItems.count == 1, shouldPromoteToFullWidth(adjustedItems[0].card, maxColumns: maxColumns) {
+            adjustedItems[0].span = maxColumns
+        } else if adjustedItems.count == 2, shouldStretchTrailingItem(adjustedItems[1].card, maxColumns: maxColumns) {
+            adjustedItems[1].span += remainingColumns
+        }
+
+        return DashboardCardRow(items: adjustedItems)
+    }
+
+    private func preferredSpan(for card: HAAnyConfig, maxColumns: Int) -> Int {
+        guard maxColumns > 1 else { return 1 }
+
+        switch card.type {
+        case "heading", "custom:mushroom-chips-card":
+            return maxColumns
+        case "weather-forecast", "picture-entity", "picture-glance", "media-control", "custom:room-summary-card", "custom:better-thermostat-ui-card", "custom:mini-graph-card":
+            return min(maxColumns, 2)
+        case "grid", "horizontal-stack", "vertical-stack":
+            return min(maxColumns, 2)
+        case "entities":
+            return card.entities.count >= 4 ? min(maxColumns, 2) : 1
+        case "glance":
+            return card.entities.count >= 5 ? min(maxColumns, 2) : 1
+        default:
+            return 1
+        }
+    }
+
+    private func shouldPromoteToFullWidth(_ card: HAAnyConfig, maxColumns: Int) -> Bool {
+        guard maxColumns > 1 else { return false }
+
+        switch card.type {
+        case "heading", "weather-forecast", "custom:mushroom-chips-card", "picture-entity", "picture-glance", "media-control", "custom:room-summary-card", "custom:better-thermostat-ui-card", "custom:mini-graph-card":
+            return true
+        case "entities":
+            return card.entities.count >= 3
+        default:
+            return false
+        }
+    }
+
+    private func shouldStretchTrailingItem(_ card: HAAnyConfig, maxColumns: Int) -> Bool {
+        shouldPromoteToFullWidth(card, maxColumns: maxColumns) || card.type == "grid"
+    }
+
+    private var maxDashboardColumnCount: Int {
+        switch availableContentWidth {
+        case ..<760:
+            return 1
+        case ..<1240:
+            return 2
+        default:
+            return 3
+        }
+    }
+
+    private var maxVideoColumnCount: Int {
+        switch availableContentWidth {
+        case ..<760:
+            return 1
+        case ..<1180:
+            return 2
+        case ..<1640:
+            return 3
+        default:
+            return 4
+        }
+    }
+}
+
+private struct DashboardContentWidthPreferenceKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+private struct DashboardContentWidthReader: View {
+    var body: some View {
+        GeometryReader { proxy in
+            Color.clear
+                .preference(key: DashboardContentWidthPreferenceKey.self, value: proxy.size.width)
+        }
+    }
 }
 
 private struct KioskOverviewBanner: View {
@@ -394,54 +563,86 @@ private struct KioskOverviewBanner: View {
     let accent: Color
 
     var body: some View {
-        HStack(alignment: .top, spacing: 20) {
-            VStack(alignment: .leading, spacing: 10) {
-                Text(title)
-                    .font(.system(size: 38, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 18) {
+                contentColumn
+                Spacer(minLength: 18)
+                clockColumn
+            }
 
-                Text(subtitle)
-                    .font(.headline.weight(.medium))
-                    .foregroundStyle(.white.opacity(0.70))
+            VStack(alignment: .leading, spacing: 14) {
+                contentColumn
+                clockColumn
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color(red: 0.06, green: 0.11, blue: 0.16))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(accent.opacity(0.14))
+        )
+    }
 
-                HStack(spacing: 10) {
+    private var contentColumn: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.system(size: 30, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+
+            Text(subtitle)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.white.opacity(0.68))
+
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
                     KioskInfoPill(title: "Cameras", value: "\(cameraCount)", tint: .cyan)
-                    KioskInfoPill(title: "Lights On", value: "\(lightsOnCount)", tint: .yellow)
+                    KioskInfoPill(title: "Lights", value: "\(lightsOnCount)", tint: .yellow)
+                    KioskInfoPill(title: "Climate", value: "\(activeClimateCount)", tint: .orange)
+                    KioskInfoPill(title: "Media", value: "\(activeMediaCount)", tint: .pink)
+                }
+
+                LazyVGrid(
+                    columns: [
+                        GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 8),
+                        GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 8)
+                    ],
+                    alignment: .leading,
+                    spacing: 8
+                ) {
+                    KioskInfoPill(title: "Cameras", value: "\(cameraCount)", tint: .cyan)
+                    KioskInfoPill(title: "Lights", value: "\(lightsOnCount)", tint: .yellow)
                     KioskInfoPill(title: "Climate", value: "\(activeClimateCount)", tint: .orange)
                     KioskInfoPill(title: "Media", value: "\(activeMediaCount)", tint: .pink)
                 }
             }
-
-            Spacer()
-
-            TimelineView(.periodic(from: .now, by: 60)) { context in
-                VStack(alignment: .trailing, spacing: 6) {
-                    Text(context.date, format: .dateTime.hour().minute())
-                        .font(.system(size: 30, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-
-                    Text(context.date, format: .dateTime.weekday(.wide).month(.wide).day())
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(.white.opacity(0.64))
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 14)
-                .background(accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(.white.opacity(0.08))
-                )
-            }
         }
-        .padding(20)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color(red: 0.06, green: 0.11, blue: 0.16))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(accent.opacity(0.18))
-        )
+    }
+
+    private var clockColumn: some View {
+        TimelineView(.periodic(from: .now, by: 60)) { context in
+            VStack(alignment: .trailing, spacing: 4) {
+                Text(context.date, format: .dateTime.hour().minute())
+                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+
+                Text(context.date, format: .dateTime.weekday(.abbreviated).month(.wide).day())
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.60))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(.white.opacity(0.06))
+            )
+        }
     }
 }
 
@@ -453,55 +654,155 @@ private struct KioskInfoPill: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.white.opacity(0.64))
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.60))
 
             Text(value)
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(.white)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
-        .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(.white.opacity(0.05))
+        )
     }
 }
 
-@ViewBuilder
-private func flatHeaderButton(title: String, action: @escaping () -> Void) -> some View {
-    Button(title, action: action)
+private struct DashboardHeaderActionButton: View {
+    @Environment(\.isFocused) private var isFocused
+
+    let title: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(backgroundColor, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(borderColor, lineWidth: isFocused ? 1.5 : 1)
+                )
+                .shadow(color: .black.opacity(isFocused ? 0.18 : 0.08), radius: isFocused ? 16 : 8, y: 6)
+                .scaleEffect(isFocused ? 1.03 : 1)
+                .animation(.easeInOut(duration: 0.18), value: isFocused)
+        }
         .buttonStyle(.plain)
+        .focusEffectDisabled()
+    }
+
+    private var backgroundColor: Color {
+        isFocused ? Color.white.opacity(0.16) : Color.white.opacity(0.07)
+    }
+
+    private var borderColor: Color {
+        isFocused ? .white.opacity(0.28) : .white.opacity(0.07)
+    }
+}
+
+private struct DashboardTopTab: View {
+    @Environment(\.isFocused) private var isFocused
+
+    let title: String
+    let systemImage: String?
+    let isSelected: Bool
+
+    init(title: String, systemImage: String? = nil, isSelected: Bool) {
+        self.title = title
+        self.systemImage = systemImage
+        self.isSelected = isSelected
+    }
+
+    var body: some View {
+        Group {
+            if let systemImage {
+                Label(title, systemImage: systemImage)
+            } else {
+                Text(title)
+            }
+        }
         .font(.subheadline.weight(.bold))
         .foregroundStyle(.white)
         .padding(.horizontal, 14)
-        .padding(.vertical, 9)
-        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .padding(.vertical, 8)
+        .background(backgroundColor, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(.white.opacity(0.08))
+                .strokeBorder(borderColor, lineWidth: isFocused ? 1.5 : 1)
         )
+        .scaleEffect(isFocused ? 1.03 : 1)
+        .shadow(color: .black.opacity(isFocused ? 0.16 : 0.06), radius: isFocused ? 14 : 6, y: 5)
+        .animation(.easeInOut(duration: 0.18), value: isFocused)
+    }
+
+    private var backgroundColor: Color {
+        if isFocused {
+            return .white.opacity(isSelected ? 0.22 : 0.14)
+        }
+        return isSelected ? .white.opacity(0.12) : .white.opacity(0.04)
+    }
+
+    private var borderColor: Color {
+        if isFocused {
+            return .white.opacity(0.30)
+        }
+        return isSelected ? .white.opacity(0.12) : .white.opacity(0.05)
+    }
 }
 
-@ViewBuilder
-private func flatTopTab(title: String, systemImage: String? = nil, isSelected: Bool) -> some View {
-    Group {
-        if let systemImage {
-            Label(title, systemImage: systemImage)
-        } else {
-            Text(title)
-        }
+private struct DashboardUtilityButtonLabel: View {
+    @Environment(\.isFocused) private var isFocused
+
+    let title: String
+    let isActive: Bool
+
+    var body: some View {
+        Text(title)
+            .font(.subheadline.weight(.bold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(backgroundColor, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(borderColor, lineWidth: isFocused ? 1.5 : 1)
+            )
+            .scaleEffect(isFocused ? 1.03 : 1)
+            .animation(.easeInOut(duration: 0.18), value: isFocused)
     }
-    .font(.subheadline.weight(.bold))
-    .foregroundStyle(.white)
-    .padding(.horizontal, 14)
-    .padding(.vertical, 9)
-    .background(
-        isSelected ? Color.white.opacity(0.14) : Color.white.opacity(0.05),
-        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-    )
-    .overlay(
-        RoundedRectangle(cornerRadius: 10, style: .continuous)
-            .strokeBorder(.white.opacity(isSelected ? 0.16 : 0.07))
-    )
+
+    private var backgroundColor: Color {
+        if isFocused {
+            return .white.opacity(isActive ? 0.22 : 0.14)
+        }
+        return isActive ? .white.opacity(0.14) : .white.opacity(0.06)
+    }
+
+    private var borderColor: Color {
+        isFocused ? .white.opacity(0.30) : .white.opacity(0.06)
+    }
+}
+
+private struct DashboardCardRow: Identifiable {
+    let items: [DashboardCardRowItem]
+
+    var id: String {
+        items.map(\.id).joined(separator: "|")
+    }
+}
+
+private struct DashboardCardRowItem: Identifiable {
+    let card: HAAnyConfig
+    var span: Int
+
+    var id: String { card.id }
 }
 
 private struct DashboardCardView: View {
