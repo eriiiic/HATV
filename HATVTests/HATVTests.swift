@@ -332,6 +332,68 @@ struct HATVTests {
         #expect(card.weatherSecondaryInfoAttribute == "humidity")
     }
 
+    @Test func readsMiniGraphCardsAndCameraFitOptions() throws {
+        let miniGraph = try JSONDecoder().decode(HAAnyConfig.self, from: Data("""
+        {
+          "type": "custom:mini-graph-card",
+          "entities": ["sensor.temperature_cuisine_temperature"],
+          "hours_to_show": 24
+        }
+        """.utf8))
+
+        let camera = try JSONDecoder().decode(HAAnyConfig.self, from: Data("""
+        {
+          "type": "picture-glance",
+          "title": "Facade",
+          "fit_mode": "cover",
+          "camera_image": "camera.front_door"
+        }
+        """.utf8))
+
+        #expect(miniGraph.graphEntityIDs == ["sensor.temperature_cuisine_temperature"])
+        #expect(miniGraph.prefersTrendVisualization)
+        #expect(camera.cameraEntityID == "camera.front_door")
+        #expect(camera.fitMode == "cover")
+    }
+
+    @Test func readsEnergyPreferencesPowerStatistic() throws {
+        let prefs = try JSONDecoder().decode(HAEnergyPreferences.self, from: Data("""
+        {
+          "energy_sources": [
+            {
+              "type": "grid",
+              "power_config": {
+                "stat_rate": "sensor.puissance_active_linky"
+              }
+            }
+          ],
+          "device_consumption": []
+        }
+        """.utf8))
+
+        #expect(prefs.primaryPowerStatisticID == "sensor.puissance_active_linky")
+    }
+
+    @Test func decodesStatisticsBucketsFromRecorderWebsocket() throws {
+        let response = try JSONDecoder().decode([String: [HAStatisticBucket]].self, from: Data("""
+        {
+          "sensor.puissance_active_linky": [
+            {
+              "start": 1775203200000,
+              "end": 1775206800000,
+              "min": 45.0,
+              "mean": 913.3,
+              "max": 2682.0
+            }
+          ]
+        }
+        """.utf8))
+
+        let bucket = try #require(response["sensor.puissance_active_linky"]?.first)
+        #expect(bucket.representativeValue == 913.3)
+        #expect(bucket.start.timeIntervalSince1970 == 1_775_203_200)
+    }
+
     @Test @MainActor func hidesCameraTilesAndCameraCards() throws {
         let drivewayJSON = """
         {

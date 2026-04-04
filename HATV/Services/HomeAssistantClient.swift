@@ -153,6 +153,42 @@ actor HomeAssistantClient {
             .sorted { $0.timestamp < $1.timestamp }
     }
 
+    func fetchEnergyPreferences() async throws -> HAEnergyPreferences {
+        let result = try await callWebSocket(type: "energy/get_prefs")
+        return try decode(HAEnergyPreferences.self, from: result)
+    }
+
+    func fetchStatistics(
+        statisticID: String,
+        hours: Int,
+        period: HAStatisticsPeriod = .hour
+    ) async throws -> [HAHistorySample] {
+        let endDate = Date()
+        let startDate = endDate.addingTimeInterval(-Double(max(hours, 1)) * 3600)
+        let formatter = Self.historyDateFormatter
+
+        let result = try await callWebSocket(
+            type: "recorder/statistics_during_period",
+            payload: [
+                "start_time": .string(formatter.string(from: startDate)),
+                "end_time": .string(formatter.string(from: endDate)),
+                "statistic_ids": .array([.string(statisticID)]),
+                "period": .string(period.rawValue)
+            ]
+        )
+
+        let series = try decode([String: [HAStatisticBucket]].self, from: result)
+        let buckets = series[statisticID] ?? []
+
+        return buckets.compactMap { bucket in
+            guard let value = bucket.representativeValue else {
+                return nil
+            }
+
+            return HAHistorySample(timestamp: bucket.start, value: value)
+        }
+    }
+
     func fetchWeatherForecast(
         entityID: String,
         type: HAWeatherForecastType = .daily

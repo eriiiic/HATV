@@ -310,6 +310,14 @@ nonisolated struct HAAnyConfig: Decodable, Identifiable, Sendable {
         return entityID
     }
 
+    var gridOptionColumns: Int? {
+        raw.object(at: ["grid_options"])?.value(at: ["columns"])?.intValue
+    }
+
+    var fitMode: String? {
+        raw["fit_mode"]?.stringValue
+    }
+
     var columns: Int {
         raw["columns"]?.intValue ?? 2
     }
@@ -339,6 +347,16 @@ nonisolated struct HAAnyConfig: Decodable, Identifiable, Sendable {
                 action: HAActionConfig(raw: object["tap_action"]?.objectValue ?? [:])
             )
         } ?? []
+    }
+
+    var graphEntityIDs: [String] {
+        let configuredEntities = entities.map(\.entityID)
+
+        if !configuredEntities.isEmpty {
+            return configuredEntities
+        }
+
+        return [entityID].compactMap { $0 }
     }
 
     var tapAction: HAActionConfig? {
@@ -412,6 +430,17 @@ nonisolated struct HAAnyConfig: Decodable, Identifiable, Sendable {
 
     var miniGraphHoursToShow: Int {
         max(raw["hours_to_show"]?.intValue ?? 24, 1)
+    }
+
+    var prefersTrendVisualization: Bool {
+        switch type {
+        case "custom:mini-graph-card", "energy-usage-graph":
+            return true
+        case "sensor":
+            return raw["graph"]?.stringValue == "line"
+        default:
+            return false
+        }
     }
 
     var weatherForecastType: HAWeatherForecastType {

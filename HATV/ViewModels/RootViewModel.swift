@@ -29,7 +29,9 @@ final class RootViewModel {
     var cameraPreviewURLs: [String: URL] = [:]
     var cameraStreamURLs: [String: URL] = [:]
     var historySamplesByKey: [String: [HAHistorySample]] = [:]
+    var statisticsSamplesByKey: [String: [HAHistorySample]] = [:]
     var weatherForecastsByKey: [String: [HAWeatherForecastEntry]] = [:]
+    var energyPreferences: HAEnergyPreferences?
     var isBusy = false
     var statusMessage = "Loading…"
     var errorMessage: String?
@@ -40,6 +42,7 @@ final class RootViewModel {
     private var stateSubscriptionID: Int?
     private var lovelaceSubscriptionID: Int?
     private var loadingHistoryKeys: Set<String> = []
+    private var loadingStatisticsKeys: Set<String> = []
     private var loadingWeatherForecastKeys: Set<String> = []
     private var activeConnection: StoredConnection?
     private var activeModelContext: ModelContext?
@@ -78,6 +81,10 @@ final class RootViewModel {
 
     var activeMediaCount: Int {
         entityStates.values.filter { $0.domain == "media_player" && $0.isActive }.count
+    }
+
+    var energyUsageStatisticID: String? {
+        energyPreferences?.primaryPowerStatisticID
     }
 
     func bootstrap(with storedConnection: StoredConnection?, modelContext: ModelContext) async {
@@ -241,7 +248,7 @@ final class RootViewModel {
 
             persistCurrentViewSelection()
             screen = .dashboard
-            await preloadCameraURLs(for: dashboardCameraEntityIDs(), includeStreamURLs: true)
+            await preloadCurrentViewData()
 
             if isShowingVideoHub {
                 await preloadAllCameraURLs()
@@ -339,6 +346,14 @@ final class RootViewModel {
         historySamplesByKey[historyKey(entityID: entityID, hours: hours)] ?? []
     }
 
+    func statisticsSamples(
+        for statisticID: String,
+        hours: Int,
+        period: HAStatisticsPeriod = .hour
+    ) -> [HAHistorySample] {
+        statisticsSamplesByKey[statisticsKey(statisticID: statisticID, hours: hours, period: period)] ?? []
+    }
+
     func weatherForecast(for entityID: String, type: HAWeatherForecastType) -> [HAWeatherForecastEntry] {
         weatherForecastsByKey[weatherForecastKey(entityID: entityID, type: type)] ?? []
     }
@@ -359,6 +374,51 @@ final class RootViewModel {
         } catch {
             present(error, context: "History")
         }
+    }
+
+    func loadStatisticsIfNeeded(
+        for statisticID: String,
+        hours: Int,
+        period: HAStatisticsPeriod = .hour
+    ) async {
+        guard let client else { return }
+
+        let key = statisticsKey(statisticID: statisticID, hours: hours, period: period)
+        guard statisticsSamplesByKey[key] == nil, !loadingStatisticsKeys.contains(key) else {
+            return
+        }
+
+        loadingStatisticsKeys.insert(key)
+        defer { loadingStatisticsKeys.remove(key) }
+
+        do {
+            statisticsSamplesByKey[key] = try await client.fetchStatistics(
+                statisticID: statisticID,
+                hours: hours,
+                period: period
+            )
+        } catch {
+            present(error, context: "Statistics")
+        }
+    }
+
+    func loadEnergyUsageIfNeeded(hours: Int = 24) async {
+        guard let client else { return }
+
+        if energyPreferences == nil {
+            do {
+                energyPreferences = try await client.fetchEnergyPreferences()
+            } catch {
+                present(error, context: "Energy")
+                return
+            }
+        }
+
+        guard let statisticID = energyPreferences?.primaryPowerStatisticID else {
+            return
+        }
+
+        await loadStatisticsIfNeeded(for: statisticID, hours: hours, period: .hour)
     }
 
     func loadWeatherForecastIfNeeded(for entityID: String, type: HAWeatherForecastType) async {
@@ -552,9 +612,14 @@ final class RootViewModel {
         serverURLString = baseURLString
         instanceInfo = info
         entityStates = Dictionary(uniqueKeysWithValues: states.map { ($0.entityID, $0) })
+        cameraPreviewURLs = [:]
+        cameraStreamURLs = [:]
         historySamplesByKey = [:]
+        statisticsSamplesByKey = [:]
         weatherForecastsByKey = [:]
+        energyPreferences = nil
         loadingHistoryKeys.removeAll()
+        loadingStatisticsKeys.removeAll()
         loadingWeatherForecastKeys.removeAll()
         self.dashboards = dashboards.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
         loadHiddenCameraPreferences()
@@ -660,6 +725,36 @@ final class RootViewModel {
         await preloadCameraURLs(for: allCameraStates.map(\.entityID), includeStreamURLs: false)
     }
 
+    private func preloadCurrentViewData() async {
+        guard !isShowingVideoHub, let currentView else { return }
+
+        let cards = currentView.allCards.filter(viewModelDisplayability)
+        let cameraIDs = cards.compactMap { card -> String? in
+            guard let cameraID = card.cameraEntityID,
+                  !hiddenCameraEntityIDs.contains(cameraID),
+                  state(for: cameraID)?.domain == "camera" else {
+                return nil
+            }
+            return cameraID
+        }
+
+        await preloadCameraURLs(for: cameraIDs, includeStreamURLs: true)
+
+        for card in cards {
+            if card.type == "weather-forecast", let entityID = card.entityID {
+                await loadWeatherForecastIfNeeded(for: entityID, type: card.weatherForecastType)
+            }
+
+            if card.prefersTrendVisualization {
+                if card.type == "energy-usage-graph" {
+                    await loadEnergyUsageIfNeeded(hours: card.miniGraphHoursToShow)
+                } else if let graphEntityID = card.graphEntityIDs.first {
+                    await loadHistoryIfNeeded(for: graphEntityID, hours: card.miniGraphHoursToShow)
+                }
+            }
+        }
+    }
+
     private func preloadCameraURLs(for entityIDs: [String], includeStreamURLs: Bool) async {
         guard let client else { return }
 
@@ -739,6 +834,14 @@ final class RootViewModel {
         "\(entityID)|\(hours)"
     }
 
+    private func statisticsKey(
+        statisticID: String,
+        hours: Int,
+        period: HAStatisticsPeriod
+    ) -> String {
+        "\(statisticID)|\(hours)|\(period.rawValue)"
+    }
+
     private func weatherForecastKey(entityID: String, type: HAWeatherForecastType) -> String {
         "\(entityID)|\(type.rawValue)"
     }
@@ -750,6 +853,10 @@ final class RootViewModel {
 
         selectedViewIndex = index
         persistCurrentViewSelection()
+
+        Task {
+            await preloadCurrentViewData()
+        }
     }
 
     private func persistCurrentViewSelection() {
@@ -798,5 +905,9 @@ final class RootViewModel {
 
     private func hiddenCameraPreferenceKey() -> String {
         "hatv.hidden-cameras.\(activeConnection?.id ?? StoredConnection.defaultID)"
+    }
+
+    private func viewModelDisplayability(_ card: HAAnyConfig) -> Bool {
+        shouldDisplayCard(card)
     }
 }

@@ -48,6 +48,8 @@ struct DashboardCardContent: View {
             buttonCard
         case "sensor", "custom:mini-graph-card":
             sensorTrendCard
+        case "energy-usage-graph":
+            energyUsageGraphCard
         case "gauge":
             gaugeCard
         case "media-control":
@@ -123,6 +125,7 @@ struct DashboardCardContent: View {
             }
         }
         .buttonStyle(.plain)
+        .focusEffectDisabled()
     }
 
     private var headingCard: some View {
@@ -303,7 +306,9 @@ struct DashboardCardContent: View {
             title: state?.friendlyName ?? primaryTitle(for: state),
             subtitle: state?.displayState ?? "Live",
             detail: state?.subtitle ?? "Open full screen",
-            previewURL: previewURL
+            previewURL: previewURL,
+            fitMode: card.fitMode,
+            style: .dashboard
         ) {
             openCamera(entityID, state?.friendlyName ?? primaryTitle(for: state))
         }
@@ -550,13 +555,13 @@ struct DashboardCardContent: View {
     }
 
     private var sensorTrendCard: some View {
-        let entityID = card.entities.first?.entityID ?? card.entityID
+        let entityID = card.graphEntityIDs.first
         let state = viewModel.state(for: entityID)
         let accent = accentColor(for: state)
         let history = entityID.map { viewModel.historySamples(for: $0, hours: card.miniGraphHoursToShow) } ?? []
         let minValue = history.map(\.value).min()
         let maxValue = history.map(\.value).max()
-        let showsTrend = card.type == "custom:mini-graph-card" || card.raw["graph"]?.stringValue == "line"
+        let showsTrend = card.prefersTrendVisualization
 
         return cardContainer(accent: accent, minHeight: showsTrend ? 224 : 168) {
             VStack(alignment: .leading, spacing: 14) {
@@ -632,6 +637,90 @@ struct DashboardCardContent: View {
         .task(id: historyTaskKey(entityID: entityID)) {
             guard showsTrend, let entityID else { return }
             await viewModel.loadHistoryIfNeeded(for: entityID, hours: card.miniGraphHoursToShow)
+        }
+    }
+
+    private var energyUsageGraphCard: some View {
+        let statisticID = viewModel.energyUsageStatisticID
+        let state = viewModel.state(for: statisticID)
+        let accent = Color.cyan
+        let hours = max(card.miniGraphHoursToShow, 24)
+        let samples = statisticID.map { viewModel.statisticsSamples(for: $0, hours: hours, period: .hour) } ?? []
+        let minValue = samples.map(\.value).min()
+        let maxValue = samples.map(\.value).max()
+        let currentValue = samples.last?.value
+
+        return cardContainer(accent: accent, minHeight: 240) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(primaryTitle(for: state))
+                            .font(.title2.weight(.bold))
+                            .foregroundStyle(.white)
+                            .lineLimit(2)
+
+                        Text("Hourly average over the last \(hours)h")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.white.opacity(0.68))
+                            .lineLimit(1)
+                    }
+
+                    Spacer()
+
+                    iconBadge(symbolName: "bolt.fill")
+                }
+
+                Text(state?.displayState ?? currentValue.map(powerValueString) ?? "Unavailable")
+                    .font(.system(size: 40, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+
+                if samples.count > 1 {
+                    DashboardTrendChart(samples: samples, accent: accent)
+                } else {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.white.opacity(0.06))
+                        .frame(height: 104)
+                        .overlay {
+                            Text("Loading energy trend…")
+                                .font(.headline.weight(.semibold))
+                                .foregroundStyle(.white.opacity(0.68))
+                        }
+                }
+
+                adaptiveMetricGrid {
+                    if let minValue {
+                        DashboardMetricPill(
+                            icon: "arrow.down",
+                            title: "Low",
+                            value: powerValueString(minValue),
+                            tint: accent
+                        )
+                    }
+
+                    if let maxValue {
+                        DashboardMetricPill(
+                            icon: "arrow.up",
+                            title: "High",
+                            value: powerValueString(maxValue),
+                            tint: accent
+                        )
+                    }
+
+                    if let currentValue {
+                        DashboardMetricPill(
+                            icon: "waveform.path.ecg",
+                            title: "Current",
+                            value: powerValueString(currentValue),
+                            tint: accent
+                        )
+                    }
+                }
+            }
+        }
+        .task(id: "energy-usage|\(hours)") {
+            await viewModel.loadEnergyUsageIfNeeded(hours: hours)
         }
     }
 
@@ -1034,8 +1123,8 @@ struct DashboardCardContent: View {
         Image(systemName: symbolName)
             .font(.headline.weight(.bold))
             .foregroundStyle(.white)
-            .frame(width: 44, height: 44)
-            .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .frame(width: 40, height: 40)
+            .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private func cardContainer<Content: View>(
@@ -1045,26 +1134,26 @@ struct DashboardCardContent: View {
     ) -> some View {
         content()
             .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .topLeading)
-            .padding(14)
+            .padding(12)
             .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Color(red: 0.09, green: 0.13, blue: 0.18))
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color(red: 0.08, green: 0.11, blue: 0.15))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(accent.opacity(0.10))
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(accent.opacity(0.08))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(
                         LinearGradient(
-                            colors: [.white.opacity(0.02), .clear],
+                            colors: [.white.opacity(0.018), .clear],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
                     )
                     .mask(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
                     )
             )
     }
@@ -1342,6 +1431,14 @@ struct DashboardCardContent: View {
         return unit.isEmpty ? formatted : "\(formatted) \(unit)"
     }
 
+    private func powerValueString(_ value: Double) -> String {
+        if value >= 1000 {
+            return "\(value.formatted(.number.precision(.fractionLength(0...1)))) W"
+        }
+
+        return "\(value.formatted(.number.precision(.fractionLength(0)))) W"
+    }
+
     private func primaryTitle(for state: HAEntityState?) -> String {
         resolvedText(card.primaryText)
             ?? resolvedText(card.heading)
@@ -1397,6 +1494,8 @@ struct DashboardCardContent: View {
             return .blue
         case "custom:mini-graph-card", "sensor":
             return .mint
+        case "energy-usage-graph":
+            return .cyan
         case "media-control":
             return .pink
         case "weather-forecast":
@@ -1508,6 +1607,11 @@ struct DashboardCardContent: View {
     }
 }
 
+enum DashboardCameraTileStyle: Sendable {
+    case videoWall
+    case dashboard
+}
+
 struct DashboardCameraTile: View {
     @Environment(\.isFocused) private var isFocused
 
@@ -1515,9 +1619,12 @@ struct DashboardCameraTile: View {
     let subtitle: String
     let detail: String
     let previewURL: URL?
+    var fitMode: String? = nil
     var badgeText: String = "LIVE"
     var tint: Color = .cyan
     var isDimmed = false
+    var style: DashboardCameraTileStyle = .videoWall
+    var height: CGFloat? = nil
     let action: () -> Void
 
     var body: some View {
@@ -1561,7 +1668,7 @@ struct DashboardCameraTile: View {
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text(title)
-                        .font(.system(size: 22, weight: .bold, design: .rounded))
+                        .font(.system(size: style == .videoWall ? 22 : 18, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                         .multilineTextAlignment(.leading)
                         .lineLimit(2)
@@ -1578,21 +1685,21 @@ struct DashboardCameraTile: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
                 }
-                .padding(16)
+                .padding(style == .videoWall ? 16 : 14)
             }
             .frame(maxWidth: .infinity)
-            .aspectRatio(16 / 9, contentMode: .fit)
+            .frame(height: height ?? tileHeight)
             .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(Color(red: 0.09, green: 0.14, blue: 0.19))
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(Color(red: 0.07, green: 0.10, blue: 0.14))
             )
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(tint.opacity(isFocused ? 0.40 : 0.18), lineWidth: isFocused ? 2 : 1)
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(tint.opacity(isFocused ? 0.30 : 0.12), lineWidth: isFocused ? 2 : 1)
             )
-            .shadow(color: .black.opacity(isFocused ? 0.24 : 0.10), radius: isFocused ? 24 : 14, y: 10)
-            .scaleEffect(isFocused ? 1.02 : 1)
+            .shadow(color: .black.opacity(isFocused ? 0.16 : 0.06), radius: isFocused ? 16 : 8, y: 6)
+            .scaleEffect(isFocused ? 1.015 : 1)
             .animation(.easeInOut(duration: 0.18), value: isFocused)
         }
         .buttonStyle(.plain)
@@ -1602,9 +1709,8 @@ struct DashboardCameraTile: View {
         Group {
             if let previewURL {
                 AsyncImage(url: previewURL) { image in
-                    image
-                        .resizable()
-                        .scaledToFill()
+                    image.resizable()
+                        .modifier(CameraPreviewScaleModifier(usesCoverMode: usesCoverMode))
                 } placeholder: {
                     placeholderPreview
                 }
@@ -1624,6 +1730,35 @@ struct DashboardCameraTile: View {
                     .font(.system(size: 34, weight: .bold))
                     .foregroundStyle(.white.opacity(0.72))
             }
+    }
+
+    private var usesCoverMode: Bool {
+        fitMode?.lowercased() != "contain"
+    }
+
+    private var tileHeight: CGFloat {
+        switch style {
+        case .videoWall:
+            return 204
+        case .dashboard:
+            return 178
+        }
+    }
+
+    private var cornerRadius: CGFloat {
+        style == .videoWall ? 12 : 10
+    }
+}
+
+private struct CameraPreviewScaleModifier: ViewModifier {
+    let usesCoverMode: Bool
+
+    func body(content: Content) -> some View {
+        if usesCoverMode {
+            AnyView(content.scaledToFill())
+        } else {
+            AnyView(content.scaledToFit())
+        }
     }
 }
 
@@ -1733,7 +1868,7 @@ private struct DashboardMetricPill: View {
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(.white)
                 .frame(width: 28, height: 28)
-                .background(tint.opacity(0.24), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .background(tint.opacity(0.18), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
@@ -1751,8 +1886,8 @@ private struct DashboardMetricPill: View {
         }
         .frame(maxWidth: .infinity, minHeight: 70, alignment: .leading)
         .padding(.horizontal, 12)
-        .padding(.vertical, 9)
-        .background(Color.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(.vertical, 8)
+        .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }
 
@@ -1778,15 +1913,15 @@ private struct DashboardControlButton: View {
                     .multilineTextAlignment(.leading)
             }
             .foregroundStyle(.white)
-            .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
             .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(backgroundColor, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .padding(.vertical, 9)
+            .background(backgroundColor, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .strokeBorder(borderColor, lineWidth: isFocused ? 1.5 : 1)
             )
-            .scaleEffect(isFocused ? 1.02 : 1)
+            .scaleEffect(isFocused ? 1.015 : 1)
             .animation(.easeInOut(duration: 0.18), value: isFocused)
         }
         .buttonStyle(.plain)
@@ -1794,7 +1929,7 @@ private struct DashboardControlButton: View {
     }
 
     private var backgroundColor: Color {
-        isFocused ? tint.opacity(0.28) : tint.opacity(0.16)
+        isFocused ? tint.opacity(0.24) : tint.opacity(0.12)
     }
 
     private var borderColor: Color {
@@ -1981,6 +2116,21 @@ private struct DashboardTrendChart: View {
         }
     }
 
+    private var yDomain: ClosedRange<Double>? {
+        let values = displaySamples.map(\.value)
+        guard let minimum = values.min(), let maximum = values.max() else {
+            return nil
+        }
+
+        if minimum == maximum {
+            let padding = max(abs(minimum) * 0.08, 1)
+            return (minimum - padding)...(maximum + padding)
+        }
+
+        let padding = max((maximum - minimum) * 0.14, 0.5)
+        return (minimum - padding)...(maximum + padding)
+    }
+
     var body: some View {
         Chart {
             ForEach(displaySamples) { sample in
@@ -2009,6 +2159,7 @@ private struct DashboardTrendChart: View {
         .chartXAxis(.hidden)
         .chartYAxis(.hidden)
         .chartLegend(.hidden)
+        .chartYScale(domain: yDomain ?? 0...1)
         .frame(height: 120)
     }
 }

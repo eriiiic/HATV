@@ -228,6 +228,7 @@ struct DashboardScreen: View {
         let visibleCameras = viewModel.visibleCameraStates
         let hiddenCameras = viewModel.hiddenCameraStates
         let displayedCameras = isShowingHiddenVideoCameras ? hiddenCameras : visibleCameras
+        let columnCount = videoColumnCount(for: displayedCameras.count)
 
         if viewModel.allCameraStates.isEmpty {
             VStack(spacing: 12) {
@@ -303,7 +304,7 @@ struct DashboardScreen: View {
                     .frame(maxWidth: .infinity, minHeight: 240)
                     .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 } else {
-                    LazyVGrid(columns: videoColumns(for: displayedCameras.count), alignment: .leading, spacing: 20) {
+                    LazyVGrid(columns: videoColumns(for: columnCount), alignment: .leading, spacing: 18) {
                         ForEach(displayedCameras) { camera in
                             DashboardCameraTile(
                                 title: camera.friendlyName,
@@ -320,7 +321,9 @@ struct DashboardScreen: View {
                                 tint: isManagingVideoCameras
                                     ? (isShowingHiddenVideoCameras ? .green : .orange)
                                     : .cyan,
-                                isDimmed: isShowingHiddenVideoCameras
+                                isDimmed: isShowingHiddenVideoCameras,
+                                style: .videoWall,
+                                height: videoTileHeight(for: columnCount)
                             ) {
                                 if isManagingVideoCameras {
                                     if isShowingHiddenVideoCameras {
@@ -406,12 +409,25 @@ struct DashboardScreen: View {
         chromeAutoHideTask = nil
     }
 
-    private func videoColumns(for itemCount: Int) -> [GridItem] {
-        let count = min(maxVideoColumnCount, max(itemCount, 1))
+    private func videoColumns(for columnCount: Int) -> [GridItem] {
         return Array(
-            repeating: GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 20, alignment: .top),
-            count: count
+            repeating: GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 18, alignment: .top),
+            count: columnCount
         )
+    }
+
+    private func videoColumnCount(for itemCount: Int) -> Int {
+        min(maxVideoColumnCount, max(itemCount, 1))
+    }
+
+    private func videoTileHeight(for columnCount: Int) -> CGFloat {
+        guard columnCount > 0, availableContentWidth > 0 else {
+            return 204
+        }
+
+        let totalSpacing = CGFloat(max(columnCount - 1, 0)) * 18
+        let tileWidth = (availableContentWidth - totalSpacing) / CGFloat(columnCount)
+        return max(180, floor(tileWidth * 9 / 16))
     }
 
     private func dashboardRows(for cards: [HAAnyConfig]) -> [DashboardCardRow] {
@@ -478,10 +494,14 @@ struct DashboardScreen: View {
     private func preferredSpan(for card: HAAnyConfig, maxColumns: Int) -> Int {
         guard maxColumns > 1 else { return 1 }
 
+        if let preferredByGrid = preferredSpanFromGridOptions(for: card, maxColumns: maxColumns) {
+            return preferredByGrid
+        }
+
         switch card.type {
         case "heading", "custom:mushroom-chips-card":
             return maxColumns
-        case "weather-forecast", "picture-entity", "picture-glance", "media-control", "custom:room-summary-card", "custom:better-thermostat-ui-card", "custom:mini-graph-card":
+        case "weather-forecast", "media-control", "custom:better-thermostat-ui-card", "energy-usage-graph":
             return min(maxColumns, 2)
         case "grid", "horizontal-stack", "vertical-stack":
             return min(maxColumns, 2)
@@ -497,8 +517,12 @@ struct DashboardScreen: View {
     private func shouldPromoteToFullWidth(_ card: HAAnyConfig, maxColumns: Int) -> Bool {
         guard maxColumns > 1 else { return false }
 
+        if let preferredByGrid = preferredSpanFromGridOptions(for: card, maxColumns: maxColumns) {
+            return preferredByGrid == maxColumns
+        }
+
         switch card.type {
-        case "heading", "weather-forecast", "custom:mushroom-chips-card", "picture-entity", "picture-glance", "media-control", "custom:room-summary-card", "custom:better-thermostat-ui-card", "custom:mini-graph-card":
+        case "heading", "weather-forecast", "custom:mushroom-chips-card", "media-control", "custom:better-thermostat-ui-card", "energy-usage-graph":
             return true
         case "entities":
             return card.entities.count >= 3
@@ -509,6 +533,22 @@ struct DashboardScreen: View {
 
     private func shouldStretchTrailingItem(_ card: HAAnyConfig, maxColumns: Int) -> Bool {
         shouldPromoteToFullWidth(card, maxColumns: maxColumns) || card.type == "grid"
+    }
+
+    private func preferredSpanFromGridOptions(for card: HAAnyConfig, maxColumns: Int) -> Int? {
+        guard let gridColumns = card.gridOptionColumns else {
+            return nil
+        }
+
+        let normalizedFraction: Double
+        if gridColumns >= 12 {
+            normalizedFraction = 1
+        } else {
+            normalizedFraction = max(Double(gridColumns) / 12.0, 1.0 / Double(maxColumns))
+        }
+
+        let scaled = Int(floor(normalizedFraction * Double(maxColumns)))
+        return min(max(scaled, 1), maxColumns)
     }
 
     private var maxDashboardColumnCount: Int {
