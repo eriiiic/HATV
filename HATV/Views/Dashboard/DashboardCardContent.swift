@@ -42,6 +42,8 @@ struct DashboardCardContent: View {
             cameraCard
         case "weather-forecast":
             weatherForecastCard
+        case "custom:hourly-weather":
+            hourlyWeatherCard
         case "tile":
             tileCard
         case "button":
@@ -54,6 +56,16 @@ struct DashboardCardContent: View {
             gaugeCard
         case "media-control":
             mediaControlCard
+        case "logbook":
+            logbookCard
+        case "custom:horizon-card":
+            horizonCard
+        case "custom:meteoalarm-card":
+            meteoAlarmCard
+        case "custom:weather-chart-card":
+            weatherChartCard
+        case "custom:weather-radar-card":
+            weatherRadarCard
         case "custom:button-card":
             customButtonCard
         case "custom:room-summary-card":
@@ -491,6 +503,373 @@ struct DashboardCardContent: View {
         }
     }
 
+    private var hourlyWeatherCard: some View {
+        let entityID = card.entityID ?? ""
+        let state = viewModel.state(for: entityID)
+        let accent = Color.cyan
+        let forecasts = Array(viewModel.weatherForecast(for: entityID, type: .hourly).prefix(8))
+
+        return cardContainer(accent: accent, minHeight: 212) {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .top, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(primaryTitle(for: state))
+                            .font(.system(size: 24, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .lineLimit(2)
+
+                        Text(state?.subtitle ?? "Hourly weather")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.68))
+                    }
+
+                    Spacer(minLength: 12)
+
+                    VStack(alignment: .trailing, spacing: 6) {
+                        Text(state?.displayState ?? "—")
+                            .font(.system(size: 36, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+
+                        if let windSpeed = state?.windSpeed {
+                            Text("Wind \(windSpeed.formatted(.number.precision(.fractionLength(0...1)))) \(state?.windSpeedUnit ?? "")")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.white.opacity(0.66))
+                        }
+                    }
+                }
+
+                if forecasts.isEmpty {
+                    emptyInlineState(text: "Loading hourly forecast…", icon: "cloud.sun.fill")
+                } else {
+                    HStack(spacing: 10) {
+                        ForEach(forecasts) { forecast in
+                            HourlyWeatherCell(
+                                forecast: forecast,
+                                showsDate: card.hourlyWeatherShowsDate,
+                                showsWind: card.hourlyWeatherWindStyle != nil,
+                                showsPrecipitationProbability: card.hourlyWeatherShowsPrecipitationProbability,
+                                showsPrecipitationAmounts: card.hourlyWeatherShowsPrecipitationAmounts,
+                                temperatureUnit: state?.temperatureUnit ?? "°",
+                                precipitationUnit: state?.precipitationUnit ?? "mm"
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        .task(id: "\(entityID)|hourly-native") {
+            guard !entityID.isEmpty else { return }
+            await viewModel.loadWeatherForecastIfNeeded(for: entityID, type: .hourly)
+        }
+    }
+
+    private var logbookCard: some View {
+        let accent = Color.orange
+        let entries = Array(viewModel.logbookEntries(for: card).prefix(6))
+
+        return cardContainer(accent: accent, minHeight: 220) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .top, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(card.title ?? "Activity")
+                            .font(.system(size: 24, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .lineLimit(2)
+
+                        Text("Last \(card.miniGraphHoursToShow) hours")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.68))
+                    }
+
+                    Spacer()
+                    iconBadge(symbolName: "clock.arrow.circlepath")
+                }
+
+                if entries.isEmpty {
+                    emptyInlineState(text: "No recent activity in this time range.", icon: "clock.badge.xmark")
+                } else {
+                    VStack(spacing: 10) {
+                        ForEach(entries) { entry in
+                            LogbookEntryRow(entry: entry)
+                        }
+                    }
+                }
+            }
+        }
+        .task(id: "\(card.id)|logbook") {
+            await viewModel.loadLogbookIfNeeded(
+                entityIDs: card.logbookEntityIDs,
+                hours: card.miniGraphHoursToShow,
+                stateFilter: card.logbookStateFilter
+            )
+        }
+    }
+
+    private var horizonCard: some View {
+        let sunState = viewModel.state(for: "sun.sun")
+        let accent = Color.yellow
+        let nextRising = dateAttribute(named: "next_rising", from: sunState)
+        let nextSetting = dateAttribute(named: "next_setting", from: sunState)
+        let azimuth = sunState?.attributes["azimuth"]?.lossyDoubleValue
+        let elevation = sunState?.attributes["elevation"]?.lossyDoubleValue
+
+        return cardContainer(accent: accent, minHeight: 192) {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .top, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Sun")
+                            .font(.system(size: 24, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+
+                        Text(sunState?.formattedStateDescription ?? "Tracking")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.68))
+                    }
+
+                    Spacer()
+                    iconBadge(symbolName: "sun.max.fill")
+                }
+
+                adaptiveMetricGrid {
+                    if card.horizonShowsSunrise, let nextRising {
+                        DashboardMetricPill(
+                            icon: "sunrise.fill",
+                            title: "Sunrise",
+                            value: nextRising.formatted(.dateTime.hour().minute()),
+                            tint: accent
+                        )
+                    }
+
+                    if card.horizonShowsSunset, let nextSetting {
+                        DashboardMetricPill(
+                            icon: "sunset.fill",
+                            title: "Sunset",
+                            value: nextSetting.formatted(.dateTime.hour().minute()),
+                            tint: accent
+                        )
+                    }
+
+                    if card.horizonShowsAzimuth, let azimuth {
+                        DashboardMetricPill(
+                            icon: "location.north.line.fill",
+                            title: "Azimuth",
+                            value: "\(azimuth.formatted(.number.precision(.fractionLength(0))))°",
+                            tint: accent
+                        )
+                    }
+
+                    if card.horizonShowsElevation, let elevation {
+                        DashboardMetricPill(
+                            icon: "sun.horizon.fill",
+                            title: "Elevation",
+                            value: "\(elevation.formatted(.number.precision(.fractionLength(0...1))))°",
+                            tint: accent
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private var meteoAlarmCard: some View {
+        let alertState = viewModel.state(for: card.alertEntityIDs.first)
+        let accent = alertTint(for: alertState?.state)
+        let activeAlerts = alertAttributes(from: alertState)
+
+        return cardContainer(accent: accent, minHeight: 196) {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .top, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Weather Alert")
+                            .font(.system(size: 24, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+
+                        Text(alertState?.state ?? "Unavailable")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.72))
+                    }
+
+                    Spacer()
+                    iconBadge(symbolName: "exclamationmark.triangle.fill")
+                }
+
+                if activeAlerts.isEmpty {
+                    emptyInlineState(text: "No active weather warnings right now.", icon: "checkmark.shield.fill")
+                } else {
+                    adaptiveMetricGrid {
+                        ForEach(activeAlerts, id: \.title) { alert in
+                            DashboardMetricPill(
+                                icon: "flag.fill",
+                                title: alert.title,
+                                value: alert.value,
+                                tint: alertTint(for: alert.value)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var weatherChartCard: some View {
+        let entityID = card.entityID ?? ""
+        let state = viewModel.state(for: entityID)
+        let accent = Color.blue
+        let forecastType = card.weatherChartForecastType
+        let desiredForecastCount = max(card.weatherChartForecastCount, 6)
+        let forecasts = Array(viewModel.weatherForecast(for: entityID, type: forecastType).prefix(desiredForecastCount))
+        let chartSamples = forecasts.enumerated().compactMap { index, forecast -> WeatherChartSample? in
+            guard let date = forecast.date, let temperature = forecast.temperature else {
+                return nil
+            }
+
+            return WeatherChartSample(
+                id: "\(index)-\(forecast.id)",
+                date: date,
+                temperature: temperature,
+                precipitationProbability: forecast.precipitationProbability,
+                precipitationAmount: forecast.precipitation
+            )
+        }
+
+        return cardContainer(accent: accent, minHeight: 272) {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .top, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(primaryTitle(for: state))
+                            .font(.system(size: 24, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .lineLimit(2)
+
+                        Text(card.weatherChartShowsCurrentCondition ? (state?.subtitle ?? "Forecast") : "Forecast")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.68))
+                    }
+
+                    Spacer()
+
+                    VStack(alignment: .trailing, spacing: 6) {
+                        Text(state?.displayState ?? "—")
+                            .font(.system(size: 36, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+
+                        if card.weatherChartShowsLastChanged, let updatedAt = state?.lastUpdatedDate {
+                            Text("Updated \(updatedAt, format: .relative(presentation: .named))")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.white.opacity(0.62))
+                        }
+                    }
+                }
+
+                if chartSamples.count > 1 {
+                    NativeWeatherTrendChart(samples: chartSamples, accent: accent)
+                } else {
+                    emptyInlineState(text: "Loading forecast curve…", icon: "chart.line.uptrend.xyaxis")
+                }
+
+                adaptiveMetricGrid {
+                    if card.weatherChartShowsHumidity, let humidity = state?.humidity {
+                        DashboardMetricPill(
+                            icon: "humidity.fill",
+                            title: "Humidity",
+                            value: "\(humidity)%",
+                            tint: accent
+                        )
+                    }
+
+                    if card.weatherChartShowsPressure, let pressure = state?.pressure {
+                        DashboardMetricPill(
+                            icon: "gauge.medium",
+                            title: "Pressure",
+                            value: "\(pressure.formatted(.number.precision(.fractionLength(0...1)))) \(state?.pressureUnit ?? "")",
+                            tint: accent
+                        )
+                    }
+
+                    if card.weatherChartShowsWindSpeed, let windSpeed = state?.windSpeed {
+                        DashboardMetricPill(
+                            icon: "wind",
+                            title: "Wind",
+                            value: "\(windSpeed.formatted(.number.precision(.fractionLength(0...1)))) \(state?.windSpeedUnit ?? "")",
+                            tint: accent
+                        )
+                    }
+
+                    if card.weatherChartShowsWindDirection, let windBearing = state?.windBearing {
+                        DashboardMetricPill(
+                            icon: "location.north.line.fill",
+                            title: "Bearing",
+                            value: "\(windBearing.formatted(.number.precision(.fractionLength(0))))°",
+                            tint: accent
+                        )
+                    }
+                }
+            }
+        }
+        .task(id: "\(entityID)|\(forecastType.rawValue)|weather-chart") {
+            guard !entityID.isEmpty else { return }
+            await viewModel.loadWeatherForecastIfNeeded(for: entityID, type: forecastType)
+        }
+    }
+
+    private var weatherRadarCard: some View {
+        let entityID = viewModel.preferredWeatherEntityID ?? ""
+        let state = viewModel.state(for: entityID)
+        let accent = Color.cyan
+        let forecasts = Array(viewModel.weatherForecast(for: entityID, type: .hourly).prefix(10))
+        let chartSamples = forecasts.enumerated().compactMap { index, forecast -> WeatherRadarSample? in
+            guard let date = forecast.date else {
+                return nil
+            }
+
+            let probability = Double(forecast.precipitationProbability ?? 0)
+            let amount = forecast.precipitation ?? 0
+            guard probability > 0 || amount > 0 else {
+                return nil
+            }
+
+            return WeatherRadarSample(
+                id: "\(index)-\(forecast.id)",
+                date: date,
+                precipitationProbability: probability,
+                precipitationAmount: amount
+            )
+        }
+
+        return cardContainer(accent: accent, minHeight: 240) {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .top, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Rain Outlook")
+                            .font(.system(size: 24, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+
+                        Text(state?.friendlyName ?? "Hourly precipitation")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.68))
+                    }
+
+                    Spacer()
+                    iconBadge(symbolName: "cloud.rain.fill")
+                }
+
+                if chartSamples.isEmpty {
+                    emptyInlineState(text: "No rain expected in the next few hours.", icon: "sun.max.fill")
+                } else {
+                    NativeWeatherRadarChart(
+                        samples: chartSamples,
+                        accent: accent,
+                        precipitationUnit: state?.precipitationUnit ?? "mm"
+                    )
+                }
+            }
+        }
+        .task(id: "\(entityID)|weather-radar") {
+            guard !entityID.isEmpty else { return }
+            await viewModel.loadWeatherForecastIfNeeded(for: entityID, type: .hourly)
+        }
+    }
+
     private var gaugeCard: some View {
         let state = entityState
         let accent = accentColor(for: state)
@@ -767,7 +1146,9 @@ struct DashboardCardContent: View {
                     }
                 }
 
-                adaptiveButtonGrid {
+                Spacer(minLength: 0)
+
+                adaptiveButtonGrid(maxColumns: 1) {
                     DashboardControlButton(
                         title: state?.state.lowercased() == "playing" ? "Pause" : "Play",
                         systemImage: state?.state.lowercased() == "playing" ? "pause.fill" : "play.fill",
@@ -839,7 +1220,9 @@ struct DashboardCardContent: View {
                         .foregroundStyle(.white.opacity(0.72))
                 }
 
-                adaptiveButtonGrid {
+                Spacer(minLength: 0)
+
+                adaptiveButtonGrid(maxColumns: 2) {
                     DashboardControlButton(title: "Cooler", systemImage: "minus", tint: accent) {
                         guard let entityID = card.entityID else { return }
                         Task { await viewModel.adjustClimateTemperature(for: entityID, delta: -0.5) }
@@ -895,7 +1278,9 @@ struct DashboardCardContent: View {
                     }
                 }
 
-                adaptiveButtonGrid {
+                Spacer(minLength: 0)
+
+                adaptiveButtonGrid(maxColumns: 3) {
                     DashboardControlButton(
                         title: state?.isActive == true ? "Turn Off" : "Turn On",
                         systemImage: state?.isActive == true ? "lightbulb.slash.fill" : "lightbulb.fill",
@@ -1035,8 +1420,10 @@ struct DashboardCardContent: View {
                 }
                 .focusSection()
 
+                Spacer(minLength: 0)
+
                 if card.primaryAction != nil {
-                    adaptiveButtonGrid {
+                    adaptiveButtonGrid(maxColumns: 1) {
                         DashboardControlButton(title: "Open room", systemImage: "arrow.right", tint: accent) {
                             Task { await viewModel.executePrimaryAction(for: card) }
                         }
@@ -1136,25 +1523,12 @@ struct DashboardCardContent: View {
             .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .topLeading)
             .padding(12)
             .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(Color(red: 0.08, green: 0.11, blue: 0.15))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .strokeBorder(accent.opacity(0.08))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [.white.opacity(0.018), .clear],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .mask(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    )
             )
     }
 
@@ -1261,17 +1635,36 @@ struct DashboardCardContent: View {
         .focusSection()
     }
 
-    private func adaptiveButtonGrid<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+    private func adaptiveButtonGrid<Content: View>(
+        maxColumns: Int = 2,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
         ViewThatFits(in: .horizontal) {
-            LazyVGrid(
-                columns: [
-                    GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 10, alignment: .top),
-                    GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 10, alignment: .top)
-                ],
-                alignment: .leading,
-                spacing: 10
-            ) {
-                content()
+            if maxColumns >= 3 {
+                LazyVGrid(
+                    columns: [
+                        GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 10, alignment: .top),
+                        GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 10, alignment: .top),
+                        GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 10, alignment: .top)
+                    ],
+                    alignment: .leading,
+                    spacing: 10
+                ) {
+                    content()
+                }
+            }
+
+            if maxColumns >= 2 {
+                LazyVGrid(
+                    columns: [
+                        GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 10, alignment: .top),
+                        GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 10, alignment: .top)
+                    ],
+                    alignment: .leading,
+                    spacing: 10
+                ) {
+                    content()
+                }
             }
 
             LazyVGrid(columns: [GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 10, alignment: .top)], alignment: .leading, spacing: 10) {
@@ -1399,6 +1792,77 @@ struct DashboardCardContent: View {
         default:
             return "cloud.sun.fill"
         }
+    }
+
+    private func emptyInlineState(text: String, icon: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.headline.weight(.bold))
+                .foregroundStyle(.white.opacity(0.78))
+                .frame(width: 34, height: 34)
+                .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+            Text(text)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.68))
+                .multilineTextAlignment(.leading)
+
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func dateAttribute(named key: String, from state: HAEntityState?) -> Date? {
+        guard let value = state?.attributes[key]?.stringValue else {
+            return nil
+        }
+
+        return Self.iso8601FractionalDateFormatter.date(from: value)
+            ?? Self.iso8601DateFormatter.date(from: value)
+    }
+
+    private func alertTint(for value: String?) -> Color {
+        switch value?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "green", "vert":
+            return .green
+        case "yellow", "jaune":
+            return .yellow
+        case "orange":
+            return .orange
+        case "red", "rouge":
+            return .red
+        default:
+            return .white
+        }
+    }
+
+    private func alertAttributes(from state: HAEntityState?) -> [WeatherAlertAttribute] {
+        guard let attributes = state?.attributes else {
+            return []
+        }
+
+        return attributes
+            .compactMap { key, value -> WeatherAlertAttribute? in
+                guard !["attribution", "icon", "friendly_name"].contains(key),
+                      let stringValue = value.stringValue else {
+                    return nil
+                }
+
+                let normalized = stringValue.lowercased()
+                guard normalized != "green", normalized != "vert" else {
+                    return nil
+                }
+
+                return WeatherAlertAttribute(
+                    title: prettifiedIdentifier(key),
+                    value: stringValue
+                )
+            }
+            .sorted { lhs, rhs in
+                lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+            }
     }
 
     private func gaugeProgress(for value: Double, min: Double, max: Double) -> Double {
@@ -1605,6 +2069,18 @@ struct DashboardCardContent: View {
     private var entityState: HAEntityState? {
         viewModel.state(for: card.entityID)
     }
+
+    private static let iso8601FractionalDateFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    private static let iso8601DateFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
 }
 
 enum DashboardCameraTileStyle: Sendable {
@@ -1698,11 +2174,11 @@ struct DashboardCameraTile: View {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .strokeBorder(tint.opacity(isFocused ? 0.30 : 0.12), lineWidth: isFocused ? 2 : 1)
             )
-            .shadow(color: .black.opacity(isFocused ? 0.16 : 0.06), radius: isFocused ? 16 : 8, y: 6)
-            .scaleEffect(isFocused ? 1.015 : 1)
+            .shadow(color: .black.opacity(isFocused ? 0.10 : 0.04), radius: isFocused ? 10 : 4, y: 4)
             .animation(.easeInOut(duration: 0.18), value: isFocused)
         }
         .buttonStyle(.plain)
+        .focusEffectDisabled()
     }
 
     private var cameraPreview: some View {
@@ -1787,7 +2263,6 @@ private struct DashboardEntityRowLabel: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .strokeBorder(borderColor, lineWidth: isFocused ? 1.5 : 1)
         )
-        .scaleEffect(isFocused ? 1.01 : 1)
         .animation(.easeInOut(duration: 0.18), value: isFocused)
     }
 
@@ -1921,7 +2396,6 @@ private struct DashboardControlButton: View {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .strokeBorder(borderColor, lineWidth: isFocused ? 1.5 : 1)
             )
-            .scaleEffect(isFocused ? 1.015 : 1)
             .animation(.easeInOut(duration: 0.18), value: isFocused)
         }
         .buttonStyle(.plain)
@@ -1961,7 +2435,6 @@ private struct DashboardChipPill: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .strokeBorder(borderColor, lineWidth: isFocused ? 1.5 : 1)
         )
-        .scaleEffect(isFocused ? 1.02 : 1)
         .animation(.easeInOut(duration: 0.18), value: isFocused)
     }
 
@@ -1972,6 +2445,164 @@ private struct DashboardChipPill: View {
     private var borderColor: Color {
         isFocused ? .white.opacity(0.28) : .white.opacity(0.10)
     }
+}
+
+private struct WeatherAlertAttribute {
+    let title: String
+    let value: String
+}
+
+private struct HourlyWeatherCell: View {
+    let forecast: HAWeatherForecastEntry
+    let showsDate: Bool
+    let showsWind: Bool
+    let showsPrecipitationProbability: Bool
+    let showsPrecipitationAmounts: Bool
+    let temperatureUnit: String
+    let precipitationUnit: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(label)
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.white.opacity(0.70))
+                .lineLimit(1)
+
+            Image(systemName: symbolName)
+                .font(.headline.weight(.bold))
+                .foregroundStyle(.white)
+
+            Text(temperature)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+
+            if showsPrecipitationProbability, let probability = forecast.precipitationProbability {
+                Text("\(probability)%")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.cyan)
+                    .lineLimit(1)
+            } else if showsPrecipitationAmounts, let precipitation = forecast.precipitation {
+                Text("\(precipitation.formatted(.number.precision(.fractionLength(0...1)))) \(precipitationUnit)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.cyan)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.74)
+            } else if showsWind, let windSpeed = forecast.windSpeed {
+                Text("\(windSpeed.formatted(.number.precision(.fractionLength(0...1))))")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.66))
+                    .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 128, alignment: .leading)
+        .padding(12)
+        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(.white.opacity(0.05))
+        )
+    }
+
+    private var label: String {
+        guard let date = forecast.date else {
+            return "Soon"
+        }
+
+        if showsDate {
+            return date.formatted(.dateTime.weekday(.abbreviated).day())
+        }
+
+        return date.formatted(.dateTime.hour())
+    }
+
+    private var symbolName: String {
+        switch forecast.condition?.lowercased() {
+        case "clear-night":
+            return "moon.stars.fill"
+        case "partlycloudy", "partly cloudy":
+            return "cloud.sun.fill"
+        case "cloudy":
+            return "cloud.fill"
+        case "rainy", "pouring":
+            return "cloud.rain.fill"
+        case "snowy", "snowy-rainy":
+            return "cloud.snow.fill"
+        case "sunny":
+            return "sun.max.fill"
+        default:
+            return "cloud.sun.fill"
+        }
+    }
+
+    private var temperature: String {
+        guard let temperature = forecast.temperature else {
+            return "—"
+        }
+
+        return "\(temperature.formatted(.number.precision(.fractionLength(0...1))))\(temperatureUnit)"
+    }
+}
+
+private struct LogbookEntryRow: View {
+    let entry: HALogbookEntry
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: "clock.arrow.circlepath")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.white.opacity(0.84))
+                .frame(width: 28, height: 28)
+                .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+
+                Text(entry.when, format: .relative(presentation: .named))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.62))
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 8)
+
+            if let state = entry.state, !state.isEmpty {
+                Text(state.replacingOccurrences(of: "_", with: " ").capitalized)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.white.opacity(0.72))
+                    .lineLimit(1)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private var title: String {
+        if let message = entry.message, !message.isEmpty {
+            return message
+        }
+
+        return entry.name ?? entry.entityID ?? "Activity"
+    }
+}
+
+private struct WeatherChartSample: Identifiable {
+    let id: String
+    let date: Date
+    let temperature: Double
+    let precipitationProbability: Int?
+    let precipitationAmount: Double?
+}
+
+private struct WeatherRadarSample: Identifiable {
+    let id: String
+    let date: Date
+    let precipitationProbability: Double
+    let precipitationAmount: Double
 }
 
 private struct WeatherForecastPill: View {
@@ -2062,6 +2693,68 @@ private struct WeatherForecastPill: View {
             ? value.formatted(.number.precision(.fractionLength(0)))
             : value.formatted(.number.precision(.fractionLength(0...1)))
         return "\(formatted)\(temperatureUnit)"
+    }
+}
+
+private struct NativeWeatherTrendChart: View {
+    let samples: [WeatherChartSample]
+    let accent: Color
+
+    var body: some View {
+        Chart {
+            ForEach(samples) { sample in
+                AreaMark(
+                    x: .value("Time", sample.date),
+                    y: .value("Temperature", sample.temperature)
+                )
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [accent.opacity(0.28), accent.opacity(0.04)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+
+                LineMark(
+                    x: .value("Time", sample.date),
+                    y: .value("Temperature", sample.temperature)
+                )
+                .foregroundStyle(accent)
+                .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+            }
+        }
+        .chartXAxis(.hidden)
+        .chartYAxis(.hidden)
+        .frame(height: 124)
+    }
+}
+
+private struct NativeWeatherRadarChart: View {
+    let samples: [WeatherRadarSample]
+    let accent: Color
+    let precipitationUnit: String
+
+    var body: some View {
+        Chart {
+            ForEach(samples) { sample in
+                BarMark(
+                    x: .value("Time", sample.date),
+                    y: .value("Probability", sample.precipitationProbability)
+                )
+                .foregroundStyle(accent.opacity(0.7))
+                .cornerRadius(4)
+                .annotation(position: .top, spacing: 4) {
+                    if sample.precipitationAmount > 0 {
+                        Text("\(sample.precipitationAmount.formatted(.number.precision(.fractionLength(0...1))))\(precipitationUnit)")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.white.opacity(0.68))
+                    }
+                }
+            }
+        }
+        .chartXAxis(.hidden)
+        .chartYAxis(.hidden)
+        .frame(height: 138)
     }
 }
 

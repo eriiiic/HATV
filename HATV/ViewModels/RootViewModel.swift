@@ -25,16 +25,24 @@ final class RootViewModel {
     var selectedViewIndex = 0
     var isShowingVideoHub = false
     var hiddenCameraEntityIDs: Set<String> = []
+    var favoriteCameraEntityIDs: Set<String> = []
     var entityStates: [String: HAEntityState] = [:]
+    var areaNamesByID: [String: String] = [:]
+    var cameraAreaNamesByEntityID: [String: String] = [:]
     var cameraPreviewURLs: [String: URL] = [:]
     var cameraStreamURLs: [String: URL] = [:]
     var historySamplesByKey: [String: [HAHistorySample]] = [:]
     var statisticsSamplesByKey: [String: [HAHistorySample]] = [:]
     var weatherForecastsByKey: [String: [HAWeatherForecastEntry]] = [:]
+    var logbookEntriesByKey: [String: [HALogbookEntry]] = [:]
     var energyPreferences: HAEnergyPreferences?
+    var lastSuccessfulRefreshAt: Date?
+    var autoLaunchDashboard = true
+    var prefersMinimalChrome = true
     var isBusy = false
     var statusMessage = "Loading…"
     var errorMessage: String?
+    var connectionProbeMessage: String?
 
     private(set) var didBootstrap = false
     private let tokenStore = KeychainTokenStore()
@@ -44,6 +52,7 @@ final class RootViewModel {
     private var loadingHistoryKeys: Set<String> = []
     private var loadingStatisticsKeys: Set<String> = []
     private var loadingWeatherForecastKeys: Set<String> = []
+    private var loadingLogbookKeys: Set<String> = []
     private var activeConnection: StoredConnection?
     private var activeModelContext: ModelContext?
     private let defaults = UserDefaults.standard
@@ -71,6 +80,21 @@ final class RootViewModel {
         allCameraStates.filter { hiddenCameraEntityIDs.contains($0.entityID) }
     }
 
+    var favoriteCameraStates: [HAEntityState] {
+        allCameraStates.filter { favoriteCameraEntityIDs.contains($0.entityID) && !hiddenCameraEntityIDs.contains($0.entityID) }
+    }
+
+    var availableCameraAreas: [String] {
+        Array(
+            Set(
+                allCameraStates.compactMap { cameraAreaNamesByEntityID[$0.entityID] }
+            )
+        )
+        .sorted { lhs, rhs in
+            lhs.localizedCaseInsensitiveCompare(rhs) == .orderedAscending
+        }
+    }
+
     var lightsOnCount: Int {
         entityStates.values.filter { $0.domain == "light" && $0.isActive }.count
     }
@@ -87,12 +111,24 @@ final class RootViewModel {
         energyPreferences?.primaryPowerStatisticID
     }
 
+    var preferredWeatherEntityID: String? {
+        if entityStates["weather.forecast_maison"] != nil {
+            return "weather.forecast_maison"
+        }
+
+        return entityStates.values
+            .filter { $0.domain == "weather" }
+            .sorted { $0.friendlyName.localizedCaseInsensitiveCompare($1.friendlyName) == .orderedAscending }
+            .first?
+            .entityID
+    }
+
     func bootstrap(with storedConnection: StoredConnection?, modelContext: ModelContext) async {
         guard !didBootstrap else { return }
         didBootstrap = true
         activeConnection = storedConnection
         activeModelContext = modelContext
-        loadHiddenCameraPreferences()
+        loadConnectionPreferences()
 
         let debugOverride = DebugHomeAssistantOverride.load()
 
@@ -103,6 +139,7 @@ final class RootViewModel {
 
         connectionName = storedConnection.name
         serverURLString = storedConnection.baseURLString
+        autoLaunchDashboard = storedConnection.autoLaunchDashboard
 
         do {
             if let token = try tokenStore.load(account: storedConnection.id), !token.isEmpty {
@@ -156,9 +193,10 @@ final class RootViewModel {
 
     func connect(modelContext: ModelContext, storedConnection: StoredConnection?) async {
         errorMessage = nil
+        connectionProbeMessage = nil
         activeConnection = storedConnection
         activeModelContext = modelContext
-        loadHiddenCameraPreferences()
+        loadConnectionPreferences()
 
         let trimmedName = connectionName.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedURL = serverURLString.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -177,6 +215,7 @@ final class RootViewModel {
                 in: modelContext,
                 existing: storedConnection
             )
+            persisted.autoLaunchDashboard = autoLaunchDashboard
             activeConnection = persisted
             try tokenStore.save(trimmedToken, account: persisted.id)
             accessToken = trimmedToken
@@ -191,6 +230,44 @@ final class RootViewModel {
         } catch {
             present(error, context: "Connection")
             screen = .connection
+        }
+    }
+
+    func testConnection() async {
+        errorMessage = nil
+        connectionProbeMessage = nil
+
+        let trimmedURL = serverURLString.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedToken = accessToken.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !trimmedURL.isEmpty, !trimmedToken.isEmpty else {
+            errorMessage = "Enter a Home Assistant URL and long-lived access token."
+            return
+        }
+
+        guard let url = normalizedURL(from: trimmedURL) else {
+            errorMessage = HomeAssistantClientError.invalidURL.localizedDescription
+            return
+        }
+
+        isBusy = true
+        statusMessage = "Testing server…"
+        defer { isBusy = false }
+
+        do {
+            let probeClient = HomeAssistantClient(baseURL: url, token: trimmedToken)
+            let info = try await probeClient.validateConnection()
+            let availableDashboards = try await probeClient.fetchDashboards()
+                .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+            await probeClient.disconnect()
+
+            instanceInfo = info
+            dashboards = availableDashboards
+            connectionProbeMessage = availableDashboards.isEmpty
+                ? "Connected, but this account cannot see any Lovelace dashboards yet."
+                : "Connected to \(info.locationName). \(availableDashboards.count) dashboard\(availableDashboards.count == 1 ? "" : "s") ready."
+        } catch {
+            present(error, context: "Connection Test")
         }
     }
 
@@ -248,6 +325,7 @@ final class RootViewModel {
 
             persistCurrentViewSelection()
             screen = .dashboard
+            lastSuccessfulRefreshAt = .now
             await preloadCurrentViewData()
 
             if isShowingVideoHub {
@@ -264,6 +342,48 @@ final class RootViewModel {
 
     func showConnectionEditor() {
         screen = .connection
+    }
+
+    func refreshDashboard() async {
+        if selectedDashboard != nil {
+            await reloadSelectedDashboard()
+        }
+    }
+
+    func reconnectCurrentSession() async {
+        guard let activeConnection else {
+            screen = .connection
+            return
+        }
+
+        do {
+            guard let token = try tokenStore.load(account: activeConnection.id), !token.isEmpty else {
+                screen = .connection
+                return
+            }
+
+            try await connectSession(
+                name: activeConnection.name,
+                baseURLString: activeConnection.baseURLString,
+                token: token,
+                storedConnection: activeConnection,
+                autoLaunchSelection: activeConnection.autoLaunchDashboard
+            )
+        } catch {
+            present(error, context: "Reconnect")
+        }
+    }
+
+    func setMinimalChromePreference(_ value: Bool) {
+        prefersMinimalChrome = value
+        persistMinimalChromePreference()
+    }
+
+    func setAutoLaunchDashboardPreference(_ value: Bool) {
+        autoLaunchDashboard = value
+        activeConnection?.autoLaunchDashboard = value
+        activeConnection?.updatedAt = .now
+        persistConnection()
     }
 
     func selectView(_ view: HALovelaceView) {
@@ -298,6 +418,19 @@ final class RootViewModel {
         return hiddenCameraEntityIDs.contains(entityID)
     }
 
+    func isCameraFavorite(_ entityID: String?) -> Bool {
+        guard let entityID else { return false }
+        return favoriteCameraEntityIDs.contains(entityID)
+    }
+
+    func cameraAreaName(for entityID: String) -> String? {
+        cameraAreaNamesByEntityID[entityID]
+    }
+
+    func cameras(inArea named: String) -> [HAEntityState] {
+        visibleCameraStates.filter { cameraAreaNamesByEntityID[$0.entityID] == named }
+    }
+
     func hideCamera(_ entityID: String) {
         hiddenCameraEntityIDs.insert(entityID)
         persistHiddenCameraPreferences()
@@ -306,6 +439,15 @@ final class RootViewModel {
     func unhideCamera(_ entityID: String) {
         hiddenCameraEntityIDs.remove(entityID)
         persistHiddenCameraPreferences()
+    }
+
+    func toggleFavoriteCamera(_ entityID: String) {
+        if favoriteCameraEntityIDs.contains(entityID) {
+            favoriteCameraEntityIDs.remove(entityID)
+        } else {
+            favoriteCameraEntityIDs.insert(entityID)
+        }
+        persistFavoriteCameraPreferences()
     }
 
     func shouldDisplayCard(_ card: HAAnyConfig) -> Bool {
@@ -356,6 +498,15 @@ final class RootViewModel {
 
     func weatherForecast(for entityID: String, type: HAWeatherForecastType) -> [HAWeatherForecastEntry] {
         weatherForecastsByKey[weatherForecastKey(entityID: entityID, type: type)] ?? []
+    }
+
+    func logbookEntries(for card: HAAnyConfig) -> [HALogbookEntry] {
+        let key = logbookKey(
+            entityIDs: card.logbookEntityIDs,
+            hours: card.miniGraphHoursToShow,
+            stateFilter: card.logbookStateFilter
+        )
+        return logbookEntriesByKey[key] ?? []
     }
 
     func loadHistoryIfNeeded(for entityID: String, hours: Int) async {
@@ -436,6 +587,32 @@ final class RootViewModel {
             weatherForecastsByKey[key] = try await client.fetchWeatherForecast(entityID: entityID, type: type)
         } catch {
             print("[HATV] Weather forecast: \(error.localizedDescription)")
+        }
+    }
+
+    func loadLogbookIfNeeded(
+        entityIDs: [String],
+        hours: Int,
+        stateFilter: [String] = []
+    ) async {
+        guard let client else { return }
+
+        let key = logbookKey(entityIDs: entityIDs, hours: hours, stateFilter: stateFilter)
+        guard logbookEntriesByKey[key] == nil, !loadingLogbookKeys.contains(key) else {
+            return
+        }
+
+        loadingLogbookKeys.insert(key)
+        defer { loadingLogbookKeys.remove(key) }
+
+        do {
+            logbookEntriesByKey[key] = try await client.fetchLogbook(
+                entityIDs: entityIDs,
+                hours: hours,
+                stateFilter: stateFilter
+            )
+        } catch {
+            print("[HATV] Logbook: \(error.localizedDescription)")
         }
     }
 
@@ -590,6 +767,7 @@ final class RootViewModel {
     ) async throws {
         isBusy = true
         statusMessage = "Connecting to \(name)…"
+        connectionProbeMessage = nil
         defer { isBusy = false }
         activeConnection = storedConnection ?? activeConnection
 
@@ -612,17 +790,30 @@ final class RootViewModel {
         serverURLString = baseURLString
         instanceInfo = info
         entityStates = Dictionary(uniqueKeysWithValues: states.map { ($0.entityID, $0) })
+        areaNamesByID = [:]
+        cameraAreaNamesByEntityID = [:]
         cameraPreviewURLs = [:]
         cameraStreamURLs = [:]
         historySamplesByKey = [:]
         statisticsSamplesByKey = [:]
         weatherForecastsByKey = [:]
+        logbookEntriesByKey = [:]
         energyPreferences = nil
+        lastSuccessfulRefreshAt = .now
         loadingHistoryKeys.removeAll()
         loadingStatisticsKeys.removeAll()
         loadingWeatherForecastKeys.removeAll()
+        loadingLogbookKeys.removeAll()
         self.dashboards = dashboards.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
-        loadHiddenCameraPreferences()
+        loadConnectionPreferences()
+
+        do {
+            let areas = try await nextClient.fetchAreaRegistry()
+            let entities = try await nextClient.fetchEntityRegistry()
+            applyCameraRegistry(areas: areas, entities: entities)
+        } catch {
+            print("[HATV] Registry: \(error.localizedDescription)")
+        }
 
         try await beginSubscriptions(with: nextClient)
 
@@ -648,6 +839,7 @@ final class RootViewModel {
         let connection = existing ?? StoredConnection()
         connection.name = name
         connection.baseURLString = baseURLString
+        connection.autoLaunchDashboard = autoLaunchDashboard
         connection.updatedAt = .now
 
         if existing == nil {
@@ -743,6 +935,26 @@ final class RootViewModel {
         for card in cards {
             if card.type == "weather-forecast", let entityID = card.entityID {
                 await loadWeatherForecastIfNeeded(for: entityID, type: card.weatherForecastType)
+            }
+
+            if card.type == "custom:hourly-weather", let entityID = card.entityID {
+                await loadWeatherForecastIfNeeded(for: entityID, type: .hourly)
+            }
+
+            if card.type == "custom:weather-chart-card", let entityID = card.entityID {
+                await loadWeatherForecastIfNeeded(for: entityID, type: card.weatherChartForecastType)
+            }
+
+            if card.type == "custom:weather-radar-card", let entityID = preferredWeatherEntityID {
+                await loadWeatherForecastIfNeeded(for: entityID, type: .hourly)
+            }
+
+            if card.type == "logbook" {
+                await loadLogbookIfNeeded(
+                    entityIDs: card.logbookEntityIDs,
+                    hours: card.miniGraphHoursToShow,
+                    stateFilter: card.logbookStateFilter
+                )
             }
 
             if card.prefersTrendVisualization {
@@ -894,6 +1106,31 @@ final class RootViewModel {
         )
     }
 
+    private func applyCameraRegistry(
+        areas: [HAAreaRegistryEntry],
+        entities: [HAEntityRegistryEntry]
+    ) {
+        areaNamesByID = Dictionary(uniqueKeysWithValues: areas.map { ($0.id, $0.name) })
+        cameraAreaNamesByEntityID = Dictionary(
+            uniqueKeysWithValues: entities.compactMap { entry in
+                guard let areaID = entry.areaID,
+                      let areaName = areaNamesByID[areaID],
+                      state(for: entry.entityID)?.domain == "camera" else {
+                    return nil
+                }
+
+                return (entry.entityID, areaName)
+            }
+        )
+    }
+
+    private func loadConnectionPreferences() {
+        autoLaunchDashboard = activeConnection?.autoLaunchDashboard ?? true
+        loadHiddenCameraPreferences()
+        loadFavoriteCameraPreferences()
+        loadMinimalChromePreference()
+    }
+
     private func loadHiddenCameraPreferences() {
         let values = defaults.stringArray(forKey: hiddenCameraPreferenceKey()) ?? []
         hiddenCameraEntityIDs = Set(values)
@@ -905,6 +1142,42 @@ final class RootViewModel {
 
     private func hiddenCameraPreferenceKey() -> String {
         "hatv.hidden-cameras.\(activeConnection?.id ?? StoredConnection.defaultID)"
+    }
+
+    private func loadFavoriteCameraPreferences() {
+        let values = defaults.stringArray(forKey: favoriteCameraPreferenceKey()) ?? []
+        favoriteCameraEntityIDs = Set(values)
+    }
+
+    private func persistFavoriteCameraPreferences() {
+        defaults.set(Array(favoriteCameraEntityIDs).sorted(), forKey: favoriteCameraPreferenceKey())
+    }
+
+    private func favoriteCameraPreferenceKey() -> String {
+        "hatv.favorite-cameras.\(activeConnection?.id ?? StoredConnection.defaultID)"
+    }
+
+    private func loadMinimalChromePreference() {
+        let key = minimalChromePreferenceKey()
+        if defaults.object(forKey: key) == nil {
+            prefersMinimalChrome = true
+        } else {
+            prefersMinimalChrome = defaults.bool(forKey: key)
+        }
+    }
+
+    private func persistMinimalChromePreference() {
+        defaults.set(prefersMinimalChrome, forKey: minimalChromePreferenceKey())
+    }
+
+    private func minimalChromePreferenceKey() -> String {
+        "hatv.minimal-chrome.\(activeConnection?.id ?? StoredConnection.defaultID)"
+    }
+
+    private func logbookKey(entityIDs: [String], hours: Int, stateFilter: [String]) -> String {
+        let normalizedEntityIDs = Array(Set(entityIDs)).sorted().joined(separator: ",")
+        let normalizedStateFilter = Array(Set(stateFilter.map { $0.lowercased() })).sorted().joined(separator: ",")
+        return "\(normalizedEntityIDs)|\(hours)|\(normalizedStateFilter)"
     }
 
     private func viewModelDisplayability(_ card: HAAnyConfig) -> Bool {

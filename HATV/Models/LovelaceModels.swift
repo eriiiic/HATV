@@ -311,7 +311,11 @@ nonisolated struct HAAnyConfig: Decodable, Identifiable, Sendable {
     }
 
     var gridOptionColumns: Int? {
-        raw.object(at: ["grid_options"])?.value(at: ["columns"])?.intValue
+        raw.object(at: ["grid_options"])?.value(at: ["columns"])?.lossyIntValue
+    }
+
+    var gridOptionRows: Int? {
+        raw.object(at: ["grid_options"])?.value(at: ["rows"])?.lossyIntValue
     }
 
     var fitMode: String? {
@@ -430,6 +434,97 @@ nonisolated struct HAAnyConfig: Decodable, Identifiable, Sendable {
 
     var miniGraphHoursToShow: Int {
         max(raw["hours_to_show"]?.intValue ?? 24, 1)
+    }
+
+    var logbookEntityIDs: [String] {
+        let target = raw.object(at: ["target"]) ?? [:]
+
+        if let entityIDs = target["entity_id"]?.arrayValue?.compactMap(\.stringValue), !entityIDs.isEmpty {
+            return entityIDs
+        }
+
+        if let entityID = target["entity_id"]?.stringValue {
+            return [entityID]
+        }
+
+        return []
+    }
+
+    var logbookStateFilter: [String] {
+        raw["state_filter"]?.arrayValue?.compactMap(\.stringValue) ?? []
+    }
+
+    var alertEntityIDs: [String] {
+        entities.map(\.entityID)
+    }
+
+    var alertHideWhenNoWarning: Bool {
+        raw["hide_when_no_warning"]?.truthyBoolValue ?? false
+    }
+
+    var hourlyWeatherShowsDate: Bool {
+        raw["show_date"]?.truthyBoolValue ?? false
+    }
+
+    var hourlyWeatherShowsPrecipitationProbability: Bool {
+        raw["show_precipitation_probability"]?.truthyBoolValue ?? false
+    }
+
+    var hourlyWeatherShowsPrecipitationAmounts: Bool {
+        raw["show_precipitation_amounts"]?.truthyBoolValue ?? false
+    }
+
+    var hourlyWeatherWindStyle: String? {
+        raw["show_wind"]?.stringValue
+    }
+
+    var horizonShowsAzimuth: Bool {
+        raw["showAzimuth"]?.truthyBoolValue ?? false
+    }
+
+    var horizonShowsElevation: Bool {
+        raw["showElevation"]?.truthyBoolValue ?? false
+    }
+
+    var horizonShowsSunrise: Bool {
+        raw.object(at: ["fields"])?.value(at: ["sunrise"])?.truthyBoolValue ?? false
+    }
+
+    var horizonShowsSunset: Bool {
+        raw.object(at: ["fields"])?.value(at: ["sunset"])?.truthyBoolValue ?? false
+    }
+
+    var weatherChartForecastType: HAWeatherForecastType {
+        let rawValue = raw.object(at: ["forecast"])?.value(at: ["type"])?.stringValue ?? "daily"
+        return HAWeatherForecastType(rawValue: rawValue) ?? .daily
+    }
+
+    var weatherChartForecastCount: Int {
+        max(raw.object(at: ["forecast"])?.value(at: ["number_of_forecasts"])?.lossyIntValue ?? 6, 0)
+    }
+
+    var weatherChartShowsHumidity: Bool {
+        raw["show_humidity"]?.truthyBoolValue ?? true
+    }
+
+    var weatherChartShowsPressure: Bool {
+        raw["show_pressure"]?.truthyBoolValue ?? true
+    }
+
+    var weatherChartShowsWindSpeed: Bool {
+        raw["show_wind_speed"]?.truthyBoolValue ?? true
+    }
+
+    var weatherChartShowsWindDirection: Bool {
+        raw["show_wind_direction"]?.truthyBoolValue ?? true
+    }
+
+    var weatherChartShowsLastChanged: Bool {
+        raw["show_last_changed"]?.truthyBoolValue ?? false
+    }
+
+    var weatherChartShowsCurrentCondition: Bool {
+        raw["show_current_condition"]?.truthyBoolValue ?? true
     }
 
     var prefersTrendVisualization: Bool {

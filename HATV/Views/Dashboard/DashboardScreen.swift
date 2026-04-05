@@ -12,24 +12,33 @@ struct DashboardScreen: View {
     @State private var chromeAutoHideTask: Task<Void, Never>?
     @State private var isManagingVideoCameras = false
     @State private var isShowingHiddenVideoCameras = false
+    @State private var selectedVideoAreaName: String?
+    @State private var isShowingFavoriteVideoCameras = false
+    @State private var videoManageMode: VideoHubManageMode = .hide
+    @State private var isShowingDiagnostics = false
     @State private var availableContentWidth: CGFloat = 0
+    @State private var headerHeight: CGFloat = 0
 
     var body: some View {
         ZStack(alignment: .top) {
             dashboardContent
-                .padding(.top, isChromeVisible ? 136 : 10)
+                .padding(.top, isChromeVisible ? headerHeight + 10 : 8)
 
             if isChromeVisible {
                 header
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
-        .padding(.horizontal, 36)
-        .padding(.vertical, 24)
+        .padding(.horizontal, 32)
+        .padding(.vertical, 20)
         .animation(.easeInOut(duration: 0.28), value: isChromeVisible)
         .onPreferenceChange(DashboardContentWidthPreferenceKey.self) { width in
             guard width > 0, abs(width - availableContentWidth) > 1 else { return }
             availableContentWidth = width
+        }
+        .onPreferenceChange(DashboardHeaderHeightPreferenceKey.self) { height in
+            guard height > 0, abs(height - headerHeight) > 1 else { return }
+            headerHeight = height
         }
         .onAppear {
             revealChrome()
@@ -44,6 +53,8 @@ struct DashboardScreen: View {
             if !viewModel.isShowingVideoHub {
                 isManagingVideoCameras = false
                 isShowingHiddenVideoCameras = false
+                isShowingFavoriteVideoCameras = false
+                selectedVideoAreaName = nil
             }
             revealChrome()
         }
@@ -66,10 +77,18 @@ struct DashboardScreen: View {
         }
         .fullScreenCover(item: $presentedCamera) { camera in
             CameraFullScreenView(
-                title: camera.title,
-                entityID: camera.entityID,
-                viewModel: viewModel
+                presentation: camera,
+                viewModel: viewModel,
+                advance: { nextIndex in
+                    presentedCamera = camera.withCurrentIndex(nextIndex)
+                },
+                close: {
+                    presentedCamera = nil
+                }
             )
+        }
+        .sheet(isPresented: $isShowingDiagnostics) {
+            DashboardDiagnosticsView(viewModel: viewModel)
         }
     }
 
@@ -124,7 +143,7 @@ struct DashboardScreen: View {
             HStack(alignment: .center, spacing: 16) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(viewModel.selectedDashboard?.title ?? "Dashboard")
-                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                        .font(.system(size: 22, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
 
                     if let instanceInfo = viewModel.instanceInfo {
@@ -136,53 +155,20 @@ struct DashboardScreen: View {
 
                 Spacer()
 
-                HStack(spacing: 10) {
+                HStack(spacing: 8) {
                     DashboardHeaderActionButton(title: "Dashboards", action: showDashboards)
+                    DashboardHeaderActionButton(title: "Diagnostics") {
+                        isShowingDiagnostics = true
+                    }
 
                     DashboardHeaderActionButton(title: "Connection", action: changeConnection)
                 }
                 .focusSection()
             }
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    Button {
-                        Task { await viewModel.showVideoHub() }
-                        revealChrome()
-                    } label: {
-                        DashboardTopTab(
-                            title: "Video",
-                            systemImage: "video.fill",
-                            isSelected: viewModel.isShowingVideoHub
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .focusEffectDisabled()
-
-                    ForEach(viewModel.dashboardConfig?.views ?? []) { view in
-                        Button {
-                            viewModel.selectView(view)
-                            revealChrome()
-                        } label: {
-                            DashboardTopTab(
-                                title: view.displayTitle,
-                                isSelected: !viewModel.isShowingVideoHub && view.id == viewModel.currentView?.id
-                            )
-                        }
-                        .buttonStyle(.plain)
-                        .focusEffectDisabled()
-                    }
-                }
-                .padding(6)
-                .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(.white.opacity(0.07))
-                )
-                .focusSection()
-            }
+            navigationRail
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .background(Color(red: 0.05, green: 0.10, blue: 0.15), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
@@ -198,6 +184,7 @@ struct DashboardScreen: View {
             .frame(height: 150)
             .ignoresSafeArea(edges: .top)
         }
+        .background(DashboardHeaderHeightReader())
     }
 
     @ViewBuilder
@@ -227,8 +214,15 @@ struct DashboardScreen: View {
     private var videoHubContent: some View {
         let visibleCameras = viewModel.visibleCameraStates
         let hiddenCameras = viewModel.hiddenCameraStates
-        let displayedCameras = isShowingHiddenVideoCameras ? hiddenCameras : visibleCameras
+        let baseCameras = isShowingHiddenVideoCameras ? hiddenCameras : visibleCameras
+        let favoriteFilteredCameras = isShowingFavoriteVideoCameras
+            ? baseCameras.filter { viewModel.isCameraFavorite($0.entityID) }
+            : baseCameras
+        let displayedCameras = selectedVideoAreaName.map { areaName in
+            favoriteFilteredCameras.filter { viewModel.cameraAreaName(for: $0.entityID) == areaName }
+        } ?? favoriteFilteredCameras
         let columnCount = videoColumnCount(for: displayedCameras.count)
+        let videoSections = groupedVideoSections(from: displayedCameras)
 
         if viewModel.allCameraStates.isEmpty {
             VStack(spacing: 12) {
@@ -252,8 +246,10 @@ struct DashboardScreen: View {
                         Text(isManagingVideoCameras
                              ? (isShowingHiddenVideoCameras
                                 ? "Select a camera to restore it to the dashboard and video wall."
-                                : "Select a camera to hide it from the dashboard and video wall.")
-                             : "Jump into any live feed and keep the wall clean.")
+                                : (videoManageMode == .favorite
+                                    ? "Select a camera to add or remove it from favorites."
+                                    : "Select a camera to hide it from the dashboard and video wall."))
+                             : "Open any feed full screen, tour favorites, or filter by area.")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.white.opacity(0.64))
                     }
@@ -261,10 +257,24 @@ struct DashboardScreen: View {
                     Spacer()
 
                     HStack(spacing: 10) {
+                        if !displayedCameras.isEmpty, !isManagingVideoCameras {
+                            Button {
+                                startCameraTour(with: displayedCameras)
+                            } label: {
+                                DashboardUtilityButtonLabel(title: "Tour", isActive: false)
+                            }
+                            .buttonStyle(.plain)
+                            .focusEffectDisabled()
+                        }
+
                         if !hiddenCameras.isEmpty {
                             Button {
                                 isShowingHiddenVideoCameras.toggle()
                                 isManagingVideoCameras = false
+                                if isShowingHiddenVideoCameras {
+                                    isShowingFavoriteVideoCameras = false
+                                    selectedVideoAreaName = nil
+                                }
                             } label: {
                                 DashboardUtilityButtonLabel(
                                     title: isShowingHiddenVideoCameras ? "Visible" : "Hidden \(hiddenCameras.count)",
@@ -289,55 +299,124 @@ struct DashboardScreen: View {
                     .focusSection()
                 }
 
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        Button {
+                            isShowingFavoriteVideoCameras = false
+                            selectedVideoAreaName = nil
+                        } label: {
+                            DashboardTopTab(
+                                title: "All",
+                                isSelected: !isShowingFavoriteVideoCameras && selectedVideoAreaName == nil
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .focusEffectDisabled()
+
+                        if !viewModel.favoriteCameraStates.isEmpty {
+                            Button {
+                                isShowingFavoriteVideoCameras = true
+                                selectedVideoAreaName = nil
+                            } label: {
+                                DashboardTopTab(
+                                    title: "Favorites",
+                                    systemImage: "star.fill",
+                                    isSelected: isShowingFavoriteVideoCameras
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .focusEffectDisabled()
+                        }
+
+                        ForEach(viewModel.availableCameraAreas, id: \.self) { areaName in
+                            Button {
+                                isShowingFavoriteVideoCameras = false
+                                selectedVideoAreaName = areaName
+                            } label: {
+                                DashboardTopTab(
+                                    title: areaName,
+                                    isSelected: selectedVideoAreaName == areaName
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .focusEffectDisabled()
+                        }
+                    }
+                    .padding(6)
+                    .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(.white.opacity(0.06))
+                    )
+                    .focusSection()
+                }
+
+                if isManagingVideoCameras && !isShowingHiddenVideoCameras {
+                    HStack(spacing: 8) {
+                        Button {
+                            videoManageMode = .favorite
+                        } label: {
+                            DashboardTopTab(
+                                title: "Favorite",
+                                systemImage: "star.fill",
+                                isSelected: videoManageMode == .favorite
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .focusEffectDisabled()
+
+                        Button {
+                            videoManageMode = .hide
+                        } label: {
+                            DashboardTopTab(
+                                title: "Hide",
+                                systemImage: "eye.slash.fill",
+                                isSelected: videoManageMode == .hide
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .focusEffectDisabled()
+                    }
+                    .focusSection()
+                }
+
                 if displayedCameras.isEmpty {
                     VStack(spacing: 12) {
-                        Text(isShowingHiddenVideoCameras ? "No hidden cameras" : "All cameras are hidden")
+                        Text(isShowingHiddenVideoCameras ? "No hidden cameras" : "No cameras match this filter")
                             .font(.system(size: 28, weight: .bold, design: .rounded))
                             .foregroundStyle(.white)
 
                         Text(isShowingHiddenVideoCameras
                              ? "Hidden cameras will appear here so you can restore them."
-                             : "Open Hidden to bring a camera back.")
+                             : "Try another area, switch back to All, or open Hidden to restore a camera.")
                             .font(.headline.weight(.medium))
                             .foregroundStyle(.white.opacity(0.68))
                     }
                     .frame(maxWidth: .infinity, minHeight: 240)
                     .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 } else {
-                    LazyVGrid(columns: videoColumns(for: columnCount), alignment: .leading, spacing: 18) {
-                        ForEach(displayedCameras) { camera in
-                            DashboardCameraTile(
-                                title: camera.friendlyName,
-                                subtitle: isManagingVideoCameras
-                                    ? (isShowingHiddenVideoCameras ? "Hidden" : "Visible")
-                                    : camera.displayState,
-                                detail: isManagingVideoCameras
-                                    ? (isShowingHiddenVideoCameras ? "Restore camera" : "Hide camera")
-                                    : (camera.subtitle ?? "Open full screen"),
-                                previewURL: viewModel.cameraPreviewURL(for: camera.entityID),
-                                badgeText: isManagingVideoCameras
-                                    ? (isShowingHiddenVideoCameras ? "RESTORE" : "HIDE")
-                                    : "LIVE",
-                                tint: isManagingVideoCameras
-                                    ? (isShowingHiddenVideoCameras ? .green : .orange)
-                                    : .cyan,
-                                isDimmed: isShowingHiddenVideoCameras,
-                                style: .videoWall,
-                                height: videoTileHeight(for: columnCount)
-                            ) {
-                                if isManagingVideoCameras {
-                                    if isShowingHiddenVideoCameras {
-                                        viewModel.unhideCamera(camera.entityID)
-                                    } else {
-                                        viewModel.hideCamera(camera.entityID)
+                    VStack(alignment: .leading, spacing: 18) {
+                        ForEach(videoSections) { section in
+                            VStack(alignment: .leading, spacing: 12) {
+                                if let title = section.title {
+                                    HStack(alignment: .center, spacing: 10) {
+                                        Text(title)
+                                            .font(.headline.weight(.bold))
+                                            .foregroundStyle(.white)
+
+                                        Text("\(section.cameras.count)")
+                                            .font(.caption.weight(.bold))
+                                            .foregroundStyle(.white.opacity(0.62))
+                                            .padding(.horizontal, 8)
+                                            .padding(.vertical, 4)
+                                            .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                                     }
-                                } else {
-                                    presentCamera(entityID: camera.entityID, title: camera.friendlyName)
                                 }
+
+                                videoGrid(for: section.cameras, columnCount: columnCount)
                             }
                         }
                     }
-                    .focusSection()
                 }
             }
         }
@@ -379,8 +458,253 @@ struct DashboardScreen: View {
     }
 
     private func presentCamera(entityID: String, title: String) {
+        presentCamera(entityIDs: [entityID], startingAt: 0, autoAdvance: false)
+    }
+
+    private func presentCamera(entityIDs: [String], startingAt index: Int, autoAdvance: Bool) {
+        let normalizedEntityIDs = entityIDs.filter { !$0.isEmpty }
+        guard !normalizedEntityIDs.isEmpty else { return }
+
         revealChrome()
-        presentedCamera = PresentedCamera(entityID: entityID, title: title)
+        presentedCamera = PresentedCamera(
+            cameraEntityIDs: normalizedEntityIDs,
+            currentIndex: min(max(index, 0), normalizedEntityIDs.count - 1),
+            autoAdvance: autoAdvance
+        )
+    }
+
+    private func startCameraTour(with cameras: [HAEntityState]) {
+        let entityIDs = cameras.map(\.entityID)
+        presentCamera(entityIDs: entityIDs, startingAt: 0, autoAdvance: true)
+    }
+
+    private func performManageAction(for camera: HAEntityState) {
+        if isShowingHiddenVideoCameras {
+            viewModel.unhideCamera(camera.entityID)
+            return
+        }
+
+        switch videoManageMode {
+        case .hide:
+            viewModel.hideCamera(camera.entityID)
+        case .favorite:
+            viewModel.toggleFavoriteCamera(camera.entityID)
+        }
+    }
+
+    private func videoManageBadge(for camera: HAEntityState) -> String {
+        if isShowingHiddenVideoCameras {
+            return "RESTORE"
+        }
+
+        switch videoManageMode {
+        case .hide:
+            return "HIDE"
+        case .favorite:
+            return viewModel.isCameraFavorite(camera.entityID) ? "STARRED" : "FAVORITE"
+        }
+    }
+
+    private func videoManageDetail(for camera: HAEntityState) -> String {
+        if isShowingHiddenVideoCameras {
+            return "Restore camera"
+        }
+
+        switch videoManageMode {
+        case .hide:
+            return "Hide camera"
+        case .favorite:
+            return viewModel.isCameraFavorite(camera.entityID) ? "Remove favorite" : "Add favorite"
+        }
+    }
+
+    private func videoManageTint(for camera: HAEntityState) -> Color {
+        if isShowingHiddenVideoCameras {
+            return .green
+        }
+
+        switch videoManageMode {
+        case .hide:
+            return .orange
+        case .favorite:
+            return viewModel.isCameraFavorite(camera.entityID) ? .yellow : .mint
+        }
+    }
+
+    private var navigationRail: some View {
+        let items = dashboardNavigationItems
+        let usesGrid = shouldUseNavigationGrid(for: items.count)
+
+        return Group {
+            if usesGrid {
+                LazyVGrid(
+                    columns: Array(
+                        repeating: GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 8, alignment: .top),
+                        count: dashboardTabColumnCount(for: items.count)
+                    ),
+                    alignment: .leading,
+                    spacing: 8
+                ) {
+                    ForEach(items) { item in
+                        Button(action: item.action) {
+                            DashboardTopTab(
+                                title: item.title,
+                                systemImage: item.systemImage,
+                                isSelected: item.isSelected,
+                                fillsWidth: true
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .focusEffectDisabled()
+                    }
+                }
+                .padding(6)
+                .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(.white.opacity(0.06))
+                )
+                .focusSection()
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(items) { item in
+                            Button(action: item.action) {
+                                DashboardTopTab(
+                                    title: item.title,
+                                    systemImage: item.systemImage,
+                                    isSelected: item.isSelected
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .focusEffectDisabled()
+                        }
+                    }
+                    .padding(6)
+                }
+                .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(.white.opacity(0.06))
+                )
+                .focusSection()
+            }
+        }
+    }
+
+    private var dashboardNavigationItems: [DashboardNavigationItem] {
+        var items = [
+            DashboardNavigationItem(
+                id: "__video",
+                title: "Video",
+                systemImage: "video.fill",
+                isSelected: viewModel.isShowingVideoHub,
+                action: {
+                    Task { await viewModel.showVideoHub() }
+                    revealChrome()
+                }
+            )
+        ]
+
+        items.append(contentsOf: (viewModel.dashboardConfig?.views ?? []).map { view in
+            DashboardNavigationItem(
+                id: view.id,
+                title: view.displayTitle,
+                systemImage: nil,
+                isSelected: !viewModel.isShowingVideoHub && view.id == viewModel.currentView?.id,
+                action: {
+                    viewModel.selectView(view)
+                    revealChrome()
+                }
+            )
+        })
+
+        return items
+    }
+
+    private func shouldUseNavigationGrid(for itemCount: Int) -> Bool {
+        itemCount > dashboardTabColumnCount(for: itemCount)
+    }
+
+    private func dashboardTabColumnCount(for itemCount: Int) -> Int {
+        let preferredCount: Int
+        switch availableContentWidth {
+        case ..<900:
+            preferredCount = 2
+        case ..<1180:
+            preferredCount = 3
+        case ..<1540:
+            preferredCount = 4
+        default:
+            preferredCount = 5
+        }
+
+        return max(1, min(preferredCount, max(itemCount, 1)))
+    }
+
+    private func groupedVideoSections(from cameras: [HAEntityState]) -> [VideoHubSection] {
+        guard !cameras.isEmpty else { return [] }
+
+        if isShowingHiddenVideoCameras || isShowingFavoriteVideoCameras || selectedVideoAreaName != nil {
+            return [VideoHubSection(title: nil, cameras: cameras)]
+        }
+
+        var sections: [VideoHubSection] = []
+        let favoriteIDs = Set(viewModel.favoriteCameraEntityIDs)
+        let favorites = cameras.filter { favoriteIDs.contains($0.entityID) }
+        if !favorites.isEmpty {
+            sections.append(VideoHubSection(title: "Favorites", cameras: favorites))
+        }
+
+        let remaining = cameras.filter { !favoriteIDs.contains($0.entityID) }
+        let groupedByArea = Dictionary(grouping: remaining) { camera in
+            viewModel.cameraAreaName(for: camera.entityID) ?? "Other"
+        }
+
+        let sortedAreaNames = groupedByArea.keys.sorted { lhs, rhs in
+            lhs.localizedCaseInsensitiveCompare(rhs) == .orderedAscending
+        }
+
+        for areaName in sortedAreaNames {
+            guard let areaCameras = groupedByArea[areaName], !areaCameras.isEmpty else { continue }
+            sections.append(VideoHubSection(title: areaName, cameras: areaCameras))
+        }
+
+        return sections.isEmpty ? [VideoHubSection(title: nil, cameras: cameras)] : sections
+    }
+
+    @ViewBuilder
+    private func videoGrid(for cameras: [HAEntityState], columnCount: Int) -> some View {
+        LazyVGrid(columns: videoColumns(for: columnCount), alignment: .leading, spacing: 18) {
+            ForEach(cameras) { camera in
+                DashboardCameraTile(
+                    title: camera.friendlyName,
+                    subtitle: isManagingVideoCameras
+                        ? (isShowingHiddenVideoCameras ? "Hidden" : (viewModel.isCameraFavorite(camera.entityID) ? "Favorite" : "Visible"))
+                        : camera.displayState,
+                    detail: isManagingVideoCameras
+                        ? videoManageDetail(for: camera)
+                        : (camera.subtitle ?? "Open full screen"),
+                    previewURL: viewModel.cameraPreviewURL(for: camera.entityID),
+                    badgeText: isManagingVideoCameras
+                        ? videoManageBadge(for: camera)
+                        : "LIVE",
+                    tint: isManagingVideoCameras
+                        ? videoManageTint(for: camera)
+                        : .cyan,
+                    isDimmed: isShowingHiddenVideoCameras,
+                    style: .videoWall,
+                    height: videoTileHeight(for: columnCount)
+                ) {
+                    if isManagingVideoCameras {
+                        performManageAction(for: camera)
+                    } else {
+                        presentCamera(entityIDs: [camera.entityID], startingAt: 0, autoAdvance: false)
+                    }
+                }
+            }
+        }
+        .focusSection()
     }
 
     private func revealChrome() {
@@ -392,6 +716,7 @@ struct DashboardScreen: View {
 
     private func scheduleChromeAutoHide() {
         cancelChromeAutoHide()
+        guard viewModel.prefersMinimalChrome else { return }
         chromeAutoHideTask = Task {
             try? await Task.sleep(for: .seconds(7))
             guard !Task.isCancelled else { return }
@@ -501,7 +826,7 @@ struct DashboardScreen: View {
         switch card.type {
         case "heading", "custom:mushroom-chips-card":
             return maxColumns
-        case "weather-forecast", "media-control", "custom:better-thermostat-ui-card", "energy-usage-graph":
+        case "weather-forecast", "custom:hourly-weather", "custom:weather-chart-card", "custom:weather-radar-card", "custom:horizon-card", "logbook", "media-control", "custom:better-thermostat-ui-card", "energy-usage-graph":
             return min(maxColumns, 2)
         case "grid", "horizontal-stack", "vertical-stack":
             return min(maxColumns, 2)
@@ -522,7 +847,7 @@ struct DashboardScreen: View {
         }
 
         switch card.type {
-        case "heading", "weather-forecast", "custom:mushroom-chips-card", "media-control", "custom:better-thermostat-ui-card", "energy-usage-graph":
+        case "heading", "weather-forecast", "custom:hourly-weather", "custom:weather-chart-card", "custom:weather-radar-card", "custom:horizon-card", "logbook", "custom:mushroom-chips-card", "media-control", "custom:better-thermostat-ui-card", "energy-usage-graph":
             return true
         case "entities":
             return card.entities.count >= 3
@@ -584,11 +909,28 @@ private struct DashboardContentWidthPreferenceKey: PreferenceKey {
     }
 }
 
+private struct DashboardHeaderHeightPreferenceKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 private struct DashboardContentWidthReader: View {
     var body: some View {
         GeometryReader { proxy in
             Color.clear
                 .preference(key: DashboardContentWidthPreferenceKey.self, value: proxy.size.width)
+        }
+    }
+}
+
+private struct DashboardHeaderHeightReader: View {
+    var body: some View {
+        GeometryReader { proxy in
+            Color.clear
+                .preference(key: DashboardHeaderHeightPreferenceKey.self, value: proxy.size.height)
         }
     }
 }
@@ -630,7 +972,7 @@ private struct KioskOverviewBanner: View {
     private var contentColumn: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title)
-                .font(.system(size: 30, weight: .bold, design: .rounded))
+                .font(.system(size: 26, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
 
             Text(subtitle)
@@ -724,14 +1066,12 @@ private struct DashboardHeaderActionButton: View {
                 .font(.caption.weight(.bold))
                 .foregroundStyle(.white)
                 .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .padding(.vertical, 7)
                 .background(backgroundColor, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
                         .strokeBorder(borderColor, lineWidth: isFocused ? 1.5 : 1)
                 )
-                .shadow(color: .black.opacity(isFocused ? 0.18 : 0.08), radius: isFocused ? 16 : 8, y: 6)
-                .scaleEffect(isFocused ? 1.03 : 1)
                 .animation(.easeInOut(duration: 0.18), value: isFocused)
         }
         .buttonStyle(.plain)
@@ -753,11 +1093,13 @@ private struct DashboardTopTab: View {
     let title: String
     let systemImage: String?
     let isSelected: Bool
+    let fillsWidth: Bool
 
-    init(title: String, systemImage: String? = nil, isSelected: Bool) {
+    init(title: String, systemImage: String? = nil, isSelected: Bool, fillsWidth: Bool = false) {
         self.title = title
         self.systemImage = systemImage
         self.isSelected = isSelected
+        self.fillsWidth = fillsWidth
     }
 
     var body: some View {
@@ -770,6 +1112,10 @@ private struct DashboardTopTab: View {
         }
         .font(.subheadline.weight(.bold))
         .foregroundStyle(.white)
+        .multilineTextAlignment(fillsWidth ? .center : .leading)
+        .lineLimit(fillsWidth ? 2 : 1)
+        .minimumScaleFactor(0.8)
+        .frame(maxWidth: fillsWidth ? .infinity : nil, minHeight: fillsWidth ? 48 : 0)
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
         .background(backgroundColor, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -777,8 +1123,6 @@ private struct DashboardTopTab: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .strokeBorder(borderColor, lineWidth: isFocused ? 1.5 : 1)
         )
-        .scaleEffect(isFocused ? 1.03 : 1)
-        .shadow(color: .black.opacity(isFocused ? 0.16 : 0.06), radius: isFocused ? 14 : 6, y: 5)
         .animation(.easeInOut(duration: 0.18), value: isFocused)
     }
 
@@ -808,13 +1152,12 @@ private struct DashboardUtilityButtonLabel: View {
             .font(.subheadline.weight(.bold))
             .foregroundStyle(.white)
             .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.vertical, 7)
             .background(backgroundColor, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .strokeBorder(borderColor, lineWidth: isFocused ? 1.5 : 1)
             )
-            .scaleEffect(isFocused ? 1.03 : 1)
             .animation(.easeInOut(duration: 0.18), value: isFocused)
     }
 
@@ -845,6 +1188,24 @@ private struct DashboardCardRowItem: Identifiable {
     var id: String { card.id }
 }
 
+private struct DashboardNavigationItem: Identifiable {
+    let id: String
+    let title: String
+    let systemImage: String?
+    let isSelected: Bool
+    let action: () -> Void
+}
+
+private struct VideoHubSection: Identifiable {
+    let title: String?
+    let cameras: [HAEntityState]
+
+    var id: String {
+        let sectionTitle = title ?? "all"
+        return "\(sectionTitle)|\(cameras.map(\.entityID).joined(separator: ","))"
+    }
+}
+
 private struct DashboardCardView: View {
     let card: HAAnyConfig
     @Bindable var viewModel: RootViewModel
@@ -852,27 +1213,180 @@ private struct DashboardCardView: View {
 
     var body: some View {
         DashboardCardContent(card: card, viewModel: viewModel, openCamera: openCamera)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}
+
+private enum VideoHubManageMode {
+    case hide
+    case favorite
+}
+
+private struct DashboardDiagnosticsView: View {
+    @Bindable var viewModel: RootViewModel
+    @Environment(\.dismiss) private var dismiss
+
+    private var appVersion: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
+        return "\(version) (\(build))"
+    }
+
+    var body: some View {
+        ZStack {
+            Color(red: 0.04, green: 0.08, blue: 0.12)
+                .ignoresSafeArea()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    HStack(alignment: .top, spacing: 16) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Diagnostics")
+                                .font(.system(size: 34, weight: .bold, design: .rounded))
+                                .foregroundStyle(.white)
+
+                            Text("Connection health, kiosk behavior, and quick recovery actions.")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.white.opacity(0.68))
+                        }
+
+                        Spacer()
+
+                        Button("Close") {
+                            dismiss()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.white.opacity(0.18))
+                    }
+
+                    LazyVGrid(
+                        columns: [
+                            GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 14),
+                            GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 14)
+                        ],
+                        alignment: .leading,
+                        spacing: 14
+                    ) {
+                        DiagnosticsMetricCard(title: "Server", value: viewModel.serverURLString)
+                        DiagnosticsMetricCard(title: "Dashboard", value: viewModel.selectedDashboard?.title ?? "Not selected")
+                        DiagnosticsMetricCard(title: "View", value: viewModel.isShowingVideoHub ? "Video Wall" : (viewModel.currentView?.displayTitle ?? "Unknown"))
+                        DiagnosticsMetricCard(title: "App", value: appVersion)
+                        DiagnosticsMetricCard(title: "Cameras", value: "\(viewModel.visibleCameraStates.count) visible / \(viewModel.hiddenCameraStates.count) hidden")
+                        DiagnosticsMetricCard(title: "Last Refresh", value: viewModel.lastSuccessfulRefreshAt?.formatted(.dateTime.hour().minute().second()) ?? "Not yet")
+                    }
+
+                    VStack(alignment: .leading, spacing: 14) {
+                        Toggle(
+                            "Open last dashboard on launch",
+                            isOn: Binding(
+                                get: { viewModel.autoLaunchDashboard },
+                                set: { viewModel.setAutoLaunchDashboardPreference($0) }
+                            )
+                        )
+                        .toggleStyle(.switch)
+                        .foregroundStyle(.white)
+
+                        Toggle(
+                            "Use minimal chrome in kiosk mode",
+                            isOn: Binding(
+                                get: { viewModel.prefersMinimalChrome },
+                                set: { viewModel.setMinimalChromePreference($0) }
+                            )
+                        )
+                        .toggleStyle(.switch)
+                        .foregroundStyle(.white)
+
+                        Text("Auto-launch skips the picker and reopens your last dashboard or video wall. Minimal chrome keeps the interface hidden until you need it.")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.white.opacity(0.58))
+                    }
+                    .padding(18)
+                    .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .strokeBorder(.white.opacity(0.08))
+                    )
+
+                    HStack(spacing: 12) {
+                        Button("Refresh Dashboard") {
+                            Task { await viewModel.refreshDashboard() }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.white.opacity(0.18))
+
+                        Button("Reconnect Session") {
+                            Task { await viewModel.reconnectCurrentSession() }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.white.opacity(0.12))
+                    }
+                }
+                .padding(32)
+            }
+        }
+    }
+}
+
+private struct DiagnosticsMetricCard: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.white.opacity(0.56))
+
+            Text(value)
+                .font(.headline.weight(.bold))
+                .foregroundStyle(.white)
+                .lineLimit(3)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity, minHeight: 92, alignment: .leading)
+        .padding(16)
+        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(.white.opacity(0.08))
+        )
     }
 }
 
 private struct PresentedCamera: Identifiable, Equatable {
-    let entityID: String
-    let title: String
+    let cameraEntityIDs: [String]
+    let currentIndex: Int
+    let autoAdvance: Bool
 
-    var id: String { entityID }
+    var id: String {
+        "\(cameraEntityIDs.joined(separator: "|"))|\(autoAdvance)"
+    }
+
+    var currentEntityID: String {
+        cameraEntityIDs[currentIndex]
+    }
+
+    func withCurrentIndex(_ nextIndex: Int) -> PresentedCamera {
+        PresentedCamera(
+            cameraEntityIDs: cameraEntityIDs,
+            currentIndex: min(max(nextIndex, 0), cameraEntityIDs.count - 1),
+            autoAdvance: autoAdvance
+        )
+    }
 }
 
 private struct CameraFullScreenView: View {
-    let title: String
-    let entityID: String
+    let presentation: PresentedCamera
     @Bindable var viewModel: RootViewModel
-    @Environment(\.dismiss) private var dismiss
+    let advance: (Int) -> Void
+    let close: () -> Void
     @State private var streamURL: URL?
     @State private var playbackState: CameraPlaybackState = .loading
     @State private var errorMessage: String?
     @State private var reloadToken = UUID()
     @State private var isChromeVisible = true
     @State private var chromeAutoHideTask: Task<Void, Never>?
+    @State private var autoAdvanceTask: Task<Void, Never>?
 
     var body: some View {
         ZStack {
@@ -925,9 +1439,28 @@ private struct CameraFullScreenView: View {
         }
         .onDisappear {
             cancelChromeAutoHide()
+            cancelAutoAdvance()
         }
         .onChange(of: playbackState) { _, newValue in
             updateChromeVisibility(for: newValue)
+        }
+        .onChange(of: presentation.currentIndex) { _, _ in
+            reloadToken = UUID()
+        }
+        .onMoveCommand { direction in
+            guard presentation.cameraEntityIDs.count > 1 else { return }
+
+            switch direction {
+            case .left:
+                advance(max(presentation.currentIndex - 1, 0))
+            case .right:
+                advance(min(presentation.currentIndex + 1, presentation.cameraEntityIDs.count - 1))
+            default:
+                break
+            }
+        }
+        .onExitCommand {
+            close()
         }
     }
 
@@ -947,11 +1480,31 @@ private struct CameraFullScreenView: View {
                         .font(.headline.weight(.medium))
                         .foregroundStyle(.white.opacity(0.66))
                 }
+
+                if presentation.cameraEntityIDs.count > 1 {
+                    Text("\(presentation.currentIndex + 1) / \(presentation.cameraEntityIDs.count)")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.white.opacity(0.60))
+                }
             }
 
             Spacer()
 
             HStack(spacing: 12) {
+                if presentation.cameraEntityIDs.count > 1 {
+                    Button("Previous") {
+                        advance(max(presentation.currentIndex - 1, 0))
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.white.opacity(0.12))
+
+                    Button("Next") {
+                        advance(min(presentation.currentIndex + 1, presentation.cameraEntityIDs.count - 1))
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.white.opacity(0.12))
+                }
+
                 Button("Refresh") {
                     reloadToken = UUID()
                 }
@@ -959,7 +1512,7 @@ private struct CameraFullScreenView: View {
                 .tint(.white.opacity(0.18))
 
                 Button("Close") {
-                    dismiss()
+                    close()
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.white.opacity(0.28))
@@ -1050,8 +1603,10 @@ private struct CameraFullScreenView: View {
         switch state {
         case .playing:
             scheduleChromeAutoHide()
+            scheduleAutoAdvanceIfNeeded()
         case .idle, .loading, .failed:
             revealChrome()
+            cancelAutoAdvance()
         }
     }
 
@@ -1088,6 +1643,36 @@ private struct CameraFullScreenView: View {
     private func cancelChromeAutoHide() {
         chromeAutoHideTask?.cancel()
         chromeAutoHideTask = nil
+    }
+
+    private func scheduleAutoAdvanceIfNeeded() {
+        cancelAutoAdvance()
+        guard presentation.autoAdvance, presentation.cameraEntityIDs.count > 1 else {
+            return
+        }
+
+        autoAdvanceTask = Task {
+            try? await Task.sleep(for: .seconds(12))
+            guard !Task.isCancelled else { return }
+
+            await MainActor.run {
+                let nextIndex = (presentation.currentIndex + 1) % presentation.cameraEntityIDs.count
+                advance(nextIndex)
+            }
+        }
+    }
+
+    private func cancelAutoAdvance() {
+        autoAdvanceTask?.cancel()
+        autoAdvanceTask = nil
+    }
+
+    private var entityID: String {
+        presentation.currentEntityID
+    }
+
+    private var title: String {
+        viewModel.state(for: entityID)?.friendlyName ?? entityID
     }
 }
 

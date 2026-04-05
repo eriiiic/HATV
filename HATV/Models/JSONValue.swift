@@ -69,6 +69,49 @@ nonisolated enum JSONValue: Codable, Equatable, Sendable {
         return value
     }
 
+    var truthyBoolValue: Bool? {
+        if let boolValue {
+            return boolValue
+        }
+
+        guard let stringValue else {
+            return nil
+        }
+
+        switch stringValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "true", "yes", "1", "on":
+            return true
+        case "false", "no", "0", "off":
+            return false
+        default:
+            return nil
+        }
+    }
+
+    var lossyDoubleValue: Double? {
+        if let doubleValue {
+            return doubleValue
+        }
+
+        guard let stringValue else {
+            return nil
+        }
+
+        return Double(stringValue)
+    }
+
+    var lossyIntValue: Int? {
+        if let intValue {
+            return intValue
+        }
+
+        guard let stringValue else {
+            return nil
+        }
+
+        return Int(stringValue)
+    }
+
     var objectValue: JSONDictionary? {
         guard case .object(let value) = self else { return nil }
         return value

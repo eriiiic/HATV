@@ -58,11 +58,19 @@ struct ContentView: View {
             case .booting:
                 LaunchView(statusMessage: viewModel.statusMessage)
             case .connection:
-                ConnectionSetupView(viewModel: viewModel) {
-                    Task {
-                        await viewModel.connect(modelContext: modelContext, storedConnection: storedConnection)
+                ConnectionSetupView(
+                    viewModel: viewModel,
+                    testConnection: {
+                        Task {
+                            await viewModel.testConnection()
+                        }
+                    },
+                    connect: {
+                        Task {
+                            await viewModel.connect(modelContext: modelContext, storedConnection: storedConnection)
+                        }
                     }
-                }
+                )
             case .dashboardPicker:
                 DashboardPickerView(
                     viewModel: viewModel,

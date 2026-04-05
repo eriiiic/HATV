@@ -203,6 +203,58 @@ actor HomeAssistantClient {
         return response.serviceResponse[entityID]?.forecast ?? []
     }
 
+    func fetchAreaRegistry() async throws -> [HAAreaRegistryEntry] {
+        let result = try await callWebSocket(type: "config/area_registry/list")
+        return try decode([HAAreaRegistryEntry].self, from: result)
+    }
+
+    func fetchEntityRegistry() async throws -> [HAEntityRegistryEntry] {
+        let result = try await callWebSocket(type: "config/entity_registry/list")
+        return try decode([HAEntityRegistryEntry].self, from: result)
+    }
+
+    func fetchLogbook(
+        entityIDs: [String],
+        hours: Int,
+        stateFilter: [String] = []
+    ) async throws -> [HALogbookEntry] {
+        let normalizedEntityIDs = Array(Set(entityIDs)).sorted()
+        let startDate = Date().addingTimeInterval(-Double(max(hours, 1)) * 3600)
+
+        if normalizedEntityIDs.isEmpty {
+            return try await fetchLogbookEntries(
+                for: nil,
+                startDate: startDate,
+                stateFilter: stateFilter
+            )
+        }
+
+        return try await withThrowingTaskGroup(of: [HALogbookEntry].self) { group in
+            for entityID in normalizedEntityIDs {
+                group.addTask {
+                    try await self.fetchLogbookEntries(
+                        for: entityID,
+                        startDate: startDate,
+                        stateFilter: stateFilter
+                    )
+                }
+            }
+
+            var combined: [HALogbookEntry] = []
+            for try await entries in group {
+                combined.append(contentsOf: entries)
+            }
+
+            return combined
+                .sorted { $0.when > $1.when }
+                .reduce(into: [HALogbookEntry]()) { result, entry in
+                    if !result.contains(entry) {
+                        result.append(entry)
+                    }
+                }
+        }
+    }
+
     func subscribe(
         eventType: String,
         handler: @escaping @Sendable (JSONDictionary) async -> Void
@@ -325,6 +377,56 @@ actor HomeAssistantClient {
         }
 
         return data
+    }
+
+    private func fetchLogbookEntries(
+        for entityID: String?,
+        startDate: Date,
+        stateFilter: [String]
+    ) async throws -> [HALogbookEntry] {
+        var components = URLComponents(url: absoluteURL(for: "/api/logbook"), resolvingAgainstBaseURL: false)
+        var queryItems = [
+            URLQueryItem(name: "start_time", value: Self.historyFallbackDateFormatter.string(from: startDate))
+        ]
+
+        if let entityID {
+            queryItems.append(URLQueryItem(name: "entity", value: entityID))
+        }
+        components?.queryItems = queryItems
+
+        guard let url = components?.url else {
+            throw HomeAssistantClientError.invalidURL
+        }
+
+        let data = try await requestData(at: url)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let string = try container.decode(String.self)
+
+            if let date = Self.parseHistoryDate(string) {
+                return date
+            }
+
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Unsupported logbook date \(string)"
+            )
+        }
+
+        let entries = try decoder.decode([HALogbookEntry].self, from: data)
+        let normalizedStates = Set(stateFilter.map { $0.lowercased() })
+
+        guard !normalizedStates.isEmpty else {
+            return entries
+        }
+
+        return entries.filter { entry in
+            guard let state = entry.state?.lowercased() else {
+                return false
+            }
+            return normalizedStates.contains(state)
+        }
     }
 
     private func ensureConnected() async throws {

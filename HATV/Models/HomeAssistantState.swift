@@ -146,6 +146,54 @@ nonisolated struct HAEntityState: Codable, Identifiable, Equatable, Sendable {
         domain == "weather" ? attributes["temperature"]?.doubleValue : nil
     }
 
+    var pressure: Double? {
+        attributes["pressure"]?.lossyDoubleValue
+    }
+
+    var pressureUnit: String? {
+        attributes["pressure_unit"]?.stringValue
+    }
+
+    var windSpeed: Double? {
+        attributes["wind_speed"]?.lossyDoubleValue
+    }
+
+    var windSpeedUnit: String? {
+        attributes["wind_speed_unit"]?.stringValue
+    }
+
+    var windBearing: Double? {
+        attributes["wind_bearing"]?.lossyDoubleValue
+    }
+
+    var windGustSpeed: Double? {
+        attributes["wind_gust_speed"]?.lossyDoubleValue
+    }
+
+    var dewPoint: Double? {
+        attributes["dew_point"]?.lossyDoubleValue
+    }
+
+    var cloudCoverage: Double? {
+        attributes["cloud_coverage"]?.lossyDoubleValue
+    }
+
+    var precipitation: Double? {
+        attributes["precipitation"]?.lossyDoubleValue
+    }
+
+    var precipitationUnit: String? {
+        attributes["precipitation_unit"]?.stringValue
+    }
+
+    var visibilityUnit: String? {
+        attributes["visibility_unit"]?.stringValue
+    }
+
+    var visibility: Double? {
+        attributes["visibility"]?.lossyDoubleValue
+    }
+
     var mediaTitle: String? {
         attributes["media_title"]?.stringValue
     }
@@ -165,6 +213,11 @@ nonisolated struct HAEntityState: Codable, Identifiable, Equatable, Sendable {
         }
 
         return min(max(Int(level * 100.0), 0), 100)
+    }
+
+    var lastUpdatedDate: Date? {
+        Self.iso8601DateFormatter.date(from: lastUpdated ?? "")
+            ?? Self.iso8601DateFormatter.date(from: lastChanged ?? "")
     }
 
     var isActive: Bool {
@@ -190,4 +243,6 @@ nonisolated struct HAEntityState: Codable, Identifiable, Equatable, Sendable {
             "water_heater"
         ].contains(domain)
     }
+
+    private static let iso8601DateFormatter = ISO8601DateFormatter()
 }
