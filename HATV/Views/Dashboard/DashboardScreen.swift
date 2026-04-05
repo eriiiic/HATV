@@ -16,26 +16,26 @@ struct DashboardScreen: View {
     @State private var isShowingFavoriteVideoCameras = false
     @State private var videoManageMode: VideoHubManageMode = .hide
     @State private var isShowingDiagnostics = false
-    @State private var availableContentWidth: CGFloat = 0
     @State private var headerHeight: CGFloat = 0
 
     var body: some View {
-        ZStack(alignment: .top) {
-            dashboardContent
-                .padding(.top, isChromeVisible ? headerHeight + 10 : 8)
+        GeometryReader { proxy in
+            let contentWidth = max(proxy.size.width - 64, 0)
 
-            if isChromeVisible {
-                header
-                    .transition(.move(edge: .top).combined(with: .opacity))
+            ZStack(alignment: .top) {
+                dashboardContent(contentWidth: contentWidth)
+                    .padding(.top, isChromeVisible ? headerHeight + 10 : 8)
+
+                if isChromeVisible {
+                    header(contentWidth: contentWidth)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
             }
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
+            .padding(.horizontal, 32)
+            .padding(.vertical, 20)
         }
-        .padding(.horizontal, 32)
-        .padding(.vertical, 20)
         .animation(.easeInOut(duration: 0.28), value: isChromeVisible)
-        .onPreferenceChange(DashboardContentWidthPreferenceKey.self) { width in
-            guard width > 0, abs(width - availableContentWidth) > 1 else { return }
-            availableContentWidth = width
-        }
         .onPreferenceChange(DashboardHeaderHeightPreferenceKey.self) { height in
             guard height > 0, abs(height - headerHeight) > 1 else { return }
             headerHeight = height
@@ -93,7 +93,7 @@ struct DashboardScreen: View {
     }
 
     @ViewBuilder
-    private var dashboardContent: some View {
+    private func dashboardContent(contentWidth: CGFloat) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 KioskOverviewBanner(
@@ -105,13 +105,18 @@ struct DashboardScreen: View {
                     activeMediaCount: viewModel.activeMediaCount,
                     accent: viewModel.isShowingVideoHub ? .cyan : .white
                 )
+                .frame(maxWidth: .infinity, alignment: .leading)
 
                 if viewModel.isShowingVideoHub {
-                    videoHubContent
+                    videoHubContent(contentWidth: contentWidth)
                 } else if let currentView = viewModel.currentView {
                     if currentView.sections.isEmpty {
                         if currentView.cards.contains(where: viewModel.shouldDisplayCard) {
-                            cardGrid(for: currentView.cards)
+                            cardGrid(
+                                for: currentView.cards,
+                                contentWidth: contentWidth,
+                                viewMaxColumns: currentView.maxColumns
+                            )
                         } else {
                             emptyDashboardState
                         }
@@ -125,20 +130,26 @@ struct DashboardScreen: View {
                                         .padding(.leading, 2)
                                 }
 
-                                cardGrid(for: section.cards)
+                                cardGrid(
+                                    for: section.cards,
+                                    contentWidth: contentWidth,
+                                    viewMaxColumns: currentView.maxColumns
+                                )
                             }
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
                 } else {
                     emptyDashboardState
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.bottom, 32)
-            .background(DashboardContentWidthReader())
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
-    private var header: some View {
+    private func header(contentWidth: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 16) {
                 VStack(alignment: .leading, spacing: 4) {
@@ -166,8 +177,9 @@ struct DashboardScreen: View {
                 .focusSection()
             }
 
-            navigationRail
+            navigationRail(contentWidth: contentWidth)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .background(Color(red: 0.05, green: 0.10, blue: 0.15), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -188,12 +200,18 @@ struct DashboardScreen: View {
     }
 
     @ViewBuilder
-    private func cardGrid(for cards: [HAAnyConfig]) -> some View {
+    private func cardGrid(
+        for cards: [HAAnyConfig],
+        contentWidth: CGFloat,
+        viewMaxColumns: Int?
+    ) -> some View {
         let visibleCards = cards.filter(viewModel.shouldDisplayCard)
+        let maxColumns = maxDashboardColumnCount(for: contentWidth, viewMaxColumns: viewMaxColumns)
+        let rows = dashboardRows(for: visibleCards, maxColumns: maxColumns)
 
-        Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 20) {
-            ForEach(dashboardRows(for: visibleCards)) { row in
-                GridRow(alignment: .top) {
+        LazyVStack(alignment: .leading, spacing: dashboardGridSpacing) {
+            ForEach(rows) { row in
+                HStack(alignment: .top, spacing: dashboardGridSpacing) {
                     ForEach(row.items) { item in
                         DashboardCardView(
                             card: item.card,
@@ -202,16 +220,24 @@ struct DashboardScreen: View {
                                 presentCamera(entityID: entityID, title: title)
                             }
                         )
-                        .gridCellColumns(item.span)
+                        .frame(
+                            width: dashboardItemWidth(
+                                for: item.span,
+                                maxColumns: maxColumns,
+                                contentWidth: contentWidth
+                            ),
+                            alignment: .topLeading
+                        )
                     }
                 }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .focusSection()
     }
 
     @ViewBuilder
-    private var videoHubContent: some View {
+    private func videoHubContent(contentWidth: CGFloat) -> some View {
         let visibleCameras = viewModel.visibleCameraStates
         let hiddenCameras = viewModel.hiddenCameraStates
         let baseCameras = isShowingHiddenVideoCameras ? hiddenCameras : visibleCameras
@@ -221,7 +247,7 @@ struct DashboardScreen: View {
         let displayedCameras = selectedVideoAreaName.map { areaName in
             favoriteFilteredCameras.filter { viewModel.cameraAreaName(for: $0.entityID) == areaName }
         } ?? favoriteFilteredCameras
-        let columnCount = videoColumnCount(for: displayedCameras.count)
+        let columnCount = videoColumnCount(for: displayedCameras.count, contentWidth: contentWidth)
         let videoSections = groupedVideoSections(from: displayedCameras)
 
         if viewModel.allCameraStates.isEmpty {
@@ -413,7 +439,7 @@ struct DashboardScreen: View {
                                     }
                                 }
 
-                                videoGrid(for: section.cameras, columnCount: columnCount)
+                                videoGrid(for: section.cameras, columnCount: columnCount, contentWidth: contentWidth)
                             }
                         }
                     }
@@ -531,16 +557,16 @@ struct DashboardScreen: View {
         }
     }
 
-    private var navigationRail: some View {
+    private func navigationRail(contentWidth: CGFloat) -> some View {
         let items = dashboardNavigationItems
-        let usesGrid = shouldUseNavigationGrid(for: items.count)
+        let usesGrid = shouldUseNavigationGrid(for: items.count, contentWidth: contentWidth)
 
         return Group {
             if usesGrid {
                 LazyVGrid(
                     columns: Array(
                         repeating: GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 8, alignment: .top),
-                        count: dashboardTabColumnCount(for: items.count)
+                        count: dashboardTabColumnCount(for: items.count, contentWidth: contentWidth)
                     ),
                     alignment: .leading,
                     spacing: 8
@@ -590,6 +616,7 @@ struct DashboardScreen: View {
                 .focusSection()
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var dashboardNavigationItems: [DashboardNavigationItem] {
@@ -622,13 +649,13 @@ struct DashboardScreen: View {
         return items
     }
 
-    private func shouldUseNavigationGrid(for itemCount: Int) -> Bool {
-        itemCount > dashboardTabColumnCount(for: itemCount)
+    private func shouldUseNavigationGrid(for itemCount: Int, contentWidth: CGFloat) -> Bool {
+        itemCount > dashboardTabColumnCount(for: itemCount, contentWidth: contentWidth)
     }
 
-    private func dashboardTabColumnCount(for itemCount: Int) -> Int {
+    private func dashboardTabColumnCount(for itemCount: Int, contentWidth: CGFloat) -> Int {
         let preferredCount: Int
-        switch availableContentWidth {
+        switch contentWidth {
         case ..<900:
             preferredCount = 2
         case ..<1180:
@@ -674,7 +701,7 @@ struct DashboardScreen: View {
     }
 
     @ViewBuilder
-    private func videoGrid(for cameras: [HAEntityState], columnCount: Int) -> some View {
+    private func videoGrid(for cameras: [HAEntityState], columnCount: Int, contentWidth: CGFloat) -> some View {
         LazyVGrid(columns: videoColumns(for: columnCount), alignment: .leading, spacing: 18) {
             ForEach(cameras) { camera in
                 DashboardCameraTile(
@@ -694,7 +721,7 @@ struct DashboardScreen: View {
                         : .cyan,
                     isDimmed: isShowingHiddenVideoCameras,
                     style: .videoWall,
-                    height: videoTileHeight(for: columnCount)
+                    height: videoTileHeight(for: columnCount, contentWidth: contentWidth)
                 ) {
                     if isManagingVideoCameras {
                         performManageAction(for: camera)
@@ -704,6 +731,7 @@ struct DashboardScreen: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .focusSection()
     }
 
@@ -741,22 +769,21 @@ struct DashboardScreen: View {
         )
     }
 
-    private func videoColumnCount(for itemCount: Int) -> Int {
-        min(maxVideoColumnCount, max(itemCount, 1))
+    private func videoColumnCount(for itemCount: Int, contentWidth: CGFloat) -> Int {
+        min(maxVideoColumnCount(for: contentWidth), max(itemCount, 1))
     }
 
-    private func videoTileHeight(for columnCount: Int) -> CGFloat {
-        guard columnCount > 0, availableContentWidth > 0 else {
+    private func videoTileHeight(for columnCount: Int, contentWidth: CGFloat) -> CGFloat {
+        guard columnCount > 0, contentWidth > 0 else {
             return 204
         }
 
         let totalSpacing = CGFloat(max(columnCount - 1, 0)) * 18
-        let tileWidth = (availableContentWidth - totalSpacing) / CGFloat(columnCount)
-        return max(180, floor(tileWidth * 9 / 16))
+        let tileWidth = (contentWidth - totalSpacing) / CGFloat(columnCount)
+        return max(188, floor(tileWidth * 0.58))
     }
 
-    private func dashboardRows(for cards: [HAAnyConfig]) -> [DashboardCardRow] {
-        let maxColumns = maxDashboardColumnCount
+    private func dashboardRows(for cards: [HAAnyConfig], maxColumns: Int) -> [DashboardCardRow] {
         guard !cards.isEmpty else { return [] }
 
         guard maxColumns > 1 else {
@@ -876,19 +903,36 @@ struct DashboardScreen: View {
         return min(max(scaled, 1), maxColumns)
     }
 
-    private var maxDashboardColumnCount: Int {
-        switch availableContentWidth {
-        case ..<760:
-            return 1
-        case ..<1240:
-            return 2
-        default:
-            return 3
+    private func dashboardItemWidth(for span: Int, maxColumns: Int, contentWidth: CGFloat) -> CGFloat {
+        guard maxColumns > 0, contentWidth > 0 else {
+            return contentWidth
         }
+
+        let totalSpacing = CGFloat(max(maxColumns - 1, 0)) * dashboardGridSpacing
+        let baseColumnWidth = max((contentWidth - totalSpacing) / CGFloat(maxColumns), 0)
+        return (baseColumnWidth * CGFloat(span)) + (dashboardGridSpacing * CGFloat(max(span - 1, 0)))
     }
 
-    private var maxVideoColumnCount: Int {
-        switch availableContentWidth {
+    private func maxDashboardColumnCount(for contentWidth: CGFloat, viewMaxColumns: Int?) -> Int {
+        let automaticColumns: Int
+        switch contentWidth {
+        case ..<760:
+            automaticColumns = 1
+        case ..<1240:
+            automaticColumns = 2
+        default:
+            automaticColumns = 3
+        }
+
+        if let viewMaxColumns, viewMaxColumns > 0 {
+            return max(1, min(viewMaxColumns, automaticColumns))
+        }
+
+        return automaticColumns
+    }
+
+    private func maxVideoColumnCount(for contentWidth: CGFloat) -> Int {
+        switch contentWidth {
         case ..<760:
             return 1
         case ..<1180:
@@ -899,13 +943,9 @@ struct DashboardScreen: View {
             return 4
         }
     }
-}
 
-private struct DashboardContentWidthPreferenceKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
+    private var dashboardGridSpacing: CGFloat {
+        18
     }
 }
 
@@ -914,15 +954,6 @@ private struct DashboardHeaderHeightPreferenceKey: PreferenceKey {
 
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = max(value, nextValue())
-    }
-}
-
-private struct DashboardContentWidthReader: View {
-    var body: some View {
-        GeometryReader { proxy in
-            Color.clear
-                .preference(key: DashboardContentWidthPreferenceKey.self, value: proxy.size.width)
-        }
     }
 }
 

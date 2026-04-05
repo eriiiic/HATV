@@ -10,6 +10,7 @@ struct HATVTests {
             {
               "title": "Main",
               "path": "main",
+              "max_columns": 1,
               "sections": [
                 {
                   "title": "Lights",
@@ -36,6 +37,7 @@ struct HATVTests {
         let config = try JSONDecoder().decode(HALovelaceConfig.self, from: Data(json.utf8))
 
         #expect(config.views.count == 1)
+        #expect(config.views.first?.maxColumns == 1)
         #expect(config.views.first?.sections.count == 1)
         #expect(config.views.first?.sections.first?.cards.first?.entities.count == 2)
     }
@@ -283,6 +285,33 @@ struct HATVTests {
         let url = await client.absoluteURL(for: "/api/hls/playlist.m3u8?authSig=abc123&part=1")
 
         #expect(url.absoluteString == "https://ha.example.com/api/hls/playlist.m3u8?authSig=abc123&part=1")
+    }
+
+    @Test func decodesMinimalHistoryResponsesWithoutRepeatingEntityIdentifiers() throws {
+        let samples = try HomeAssistantClient.historySamples(from: Data("""
+        [
+          [
+            {
+              "entity_id": "sensor.temperature_loff_temperature",
+              "state": "5.5",
+              "last_changed": "2026-04-04T04:49:14.069545+00:00",
+              "last_updated": "2026-04-04T04:49:14.069545+00:00"
+            },
+            {
+              "state": "unavailable",
+              "last_changed": "2026-04-04T05:09:35.886101+00:00"
+            },
+            {
+              "state": "5.9",
+              "last_changed": "2026-04-04T08:38:47.896969+00:00"
+            }
+          ]
+        ]
+        """.utf8))
+
+        #expect(samples.count == 2)
+        #expect(samples.first?.value == 5.5)
+        #expect(samples.last?.value == 5.9)
     }
 
     @Test func decodesWeatherForecastServiceResponse() throws {

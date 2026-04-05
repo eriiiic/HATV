@@ -48,7 +48,7 @@ nonisolated struct HAHistorySample: Identifiable, Equatable, Sendable {
 }
 
 private nonisolated struct HAHistoryState: Decodable, Sendable {
-    let entityID: String
+    let entityID: String?
     let state: String
     let lastChanged: String?
     let lastUpdated: String?
@@ -138,19 +138,7 @@ actor HomeAssistantClient {
         }
 
         let data = try await requestData(at: url)
-        let rawHistory = try JSONDecoder().decode([[HAHistoryState]].self, from: data)
-
-        return rawHistory
-            .flatMap { $0 }
-            .compactMap { state in
-                guard let value = Double(state.state),
-                      let timestamp = Self.parseHistoryDate(state.lastChanged ?? state.lastUpdated) else {
-                    return nil
-                }
-
-                return HAHistorySample(timestamp: timestamp, value: value)
-            }
-            .sorted { $0.timestamp < $1.timestamp }
+        return try Self.historySamples(from: data)
     }
 
     func fetchEnergyPreferences() async throws -> HAEnergyPreferences {
@@ -346,6 +334,22 @@ actor HomeAssistantClient {
 
         let trimmedPath = path.hasPrefix("/") ? String(path.dropFirst()) : path
         return baseURL.appending(path: trimmedPath)
+    }
+
+    nonisolated static func historySamples(from data: Data) throws -> [HAHistorySample] {
+        let rawHistory = try JSONDecoder().decode([[HAHistoryState]].self, from: data)
+
+        return rawHistory
+            .flatMap { $0 }
+            .compactMap { state in
+                guard let value = Double(state.state),
+                      let timestamp = parseHistoryDate(state.lastChanged ?? state.lastUpdated) else {
+                    return nil
+                }
+
+                return HAHistorySample(timestamp: timestamp, value: value)
+            }
+            .sorted { $0.timestamp < $1.timestamp }
     }
 
     private func request<T: Decodable>(_ path: String, as type: T.Type) async throws -> T {

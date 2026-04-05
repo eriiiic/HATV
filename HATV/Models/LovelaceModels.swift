@@ -130,6 +130,7 @@ nonisolated struct HALovelaceView: Decodable, Identifiable, Sendable {
     let path: String?
     let icon: String?
     let type: String?
+    let maxColumns: Int?
     let cards: [HAAnyConfig]
     let sections: [HASectionConfig]
 
@@ -138,6 +139,7 @@ nonisolated struct HALovelaceView: Decodable, Identifiable, Sendable {
         case path
         case icon
         case type
+        case maxColumns = "max_columns"
         case cards
         case sections
     }
@@ -148,6 +150,7 @@ nonisolated struct HALovelaceView: Decodable, Identifiable, Sendable {
         path = try container.decodeIfPresent(String.self, forKey: .path)
         icon = try container.decodeIfPresent(String.self, forKey: .icon)
         type = try container.decodeIfPresent(String.self, forKey: .type)
+        maxColumns = try container.decodeIfPresent(Int.self, forKey: .maxColumns)
         cards = try container.decodeIfPresent([HAAnyConfig].self, forKey: .cards) ?? []
         sections = try container.decodeIfPresent([HASectionConfig].self, forKey: .sections) ?? []
         id = path ?? title ?? UUID().uuidString
