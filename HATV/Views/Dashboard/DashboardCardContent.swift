@@ -262,8 +262,7 @@ struct DashboardCardContent: View {
                     spacing: 18
                 ) {
                     ForEach(visibleChildCards) { child in
-                        DashboardCardContent(card: child, viewModel: viewModel, openCamera: openCamera)
-                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                        embeddedCardView(for: child)
                     }
                 }
             }
@@ -287,21 +286,20 @@ struct DashboardCardContent: View {
                     ViewThatFits(in: .horizontal) {
                         HStack(alignment: .top, spacing: 12) {
                             ForEach(visibleChildCards) { child in
-                                DashboardCardContent(card: child, viewModel: viewModel, openCamera: openCamera)
-                                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                                embeddedCardView(for: child)
                             }
                         }
 
                         VStack(spacing: 12) {
                             ForEach(visibleChildCards) { child in
-                                DashboardCardContent(card: child, viewModel: viewModel, openCamera: openCamera)
+                                embeddedCardView(for: child)
                             }
                         }
                     }
                 } else {
                     VStack(spacing: 12) {
                         ForEach(visibleChildCards) { child in
-                            DashboardCardContent(card: child, viewModel: viewModel, openCamera: openCamera)
+                            embeddedCardView(for: child)
                         }
                     }
                 }
@@ -1477,6 +1475,19 @@ struct DashboardCardContent: View {
         return "Status"
     }
 
+    @ViewBuilder
+    private func embeddedCardView(for child: HAAnyConfig) -> some View {
+        if child.usesStandaloneFocusSurface {
+            DashboardStandaloneFocusCard {
+                DashboardCardContent(card: child, viewModel: viewModel, openCamera: openCamera)
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+        } else {
+            DashboardCardContent(card: child, viewModel: viewModel, openCamera: openCamera)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+    }
+
     private func entityRow(for item: HAEntityItem) -> some View {
         let state = viewModel.state(for: item.entityID)
         let symbol = symbolName(for: state, rawIcon: item.icon, fallback: "circle.fill")
@@ -2086,6 +2097,30 @@ struct DashboardCardContent: View {
 enum DashboardCameraTileStyle: Sendable {
     case videoWall
     case dashboard
+}
+
+struct DashboardStandaloneFocusCard<Content: View>: View {
+    @Environment(\.isFocused) private var isFocused
+
+    let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    var body: some View {
+        content
+            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .scaleEffect(isFocused ? 1.008 : 1)
+            .overlay {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(.white.opacity(isFocused ? 0.18 : 0), lineWidth: 2)
+            }
+            .shadow(color: .black.opacity(isFocused ? 0.14 : 0), radius: isFocused ? 16 : 0, y: 8)
+            .focusable(true)
+            .focusEffectDisabled()
+            .animation(.easeInOut(duration: 0.18), value: isFocused)
+    }
 }
 
 struct DashboardCameraTile: View {

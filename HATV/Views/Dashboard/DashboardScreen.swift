@@ -230,6 +230,7 @@ struct DashboardScreen: View {
                         )
                     }
                 }
+                .focusSection()
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1243,8 +1244,16 @@ private struct DashboardCardView: View {
     let openCamera: (String, String) -> Void
 
     var body: some View {
-        DashboardCardContent(card: card, viewModel: viewModel, openCamera: openCamera)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        Group {
+            if card.usesStandaloneFocusSurface {
+                DashboardStandaloneFocusCard {
+                    DashboardCardContent(card: card, viewModel: viewModel, openCamera: openCamera)
+                }
+            } else {
+                DashboardCardContent(card: card, viewModel: viewModel, openCamera: openCamera)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
 

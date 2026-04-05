@@ -439,6 +439,26 @@ nonisolated struct HAAnyConfig: Decodable, Identifiable, Sendable {
         max(raw["hours_to_show"]?.intValue ?? 24, 1)
     }
 
+    var usesStandaloneFocusSurface: Bool {
+        switch type {
+        case "heading",
+             "sensor",
+             "custom:mini-graph-card",
+             "weather-forecast",
+             "custom:hourly-weather",
+             "energy-usage-graph",
+             "gauge",
+             "logbook",
+             "custom:horizon-card",
+             "custom:meteoalarm-card",
+             "custom:weather-chart-card",
+             "custom:weather-radar-card":
+            return true
+        default:
+            return false
+        }
+    }
+
     var logbookEntityIDs: [String] {
         let target = raw.object(at: ["target"]) ?? [:]
 
