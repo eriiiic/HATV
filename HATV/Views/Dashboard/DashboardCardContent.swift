@@ -3186,7 +3186,7 @@ struct DashboardTrendChart: View {
     private var interpolationMethod: InterpolationMethod {
         switch style {
         case .line:
-            return .catmullRom
+            return .monotone
         case .step:
             return .stepStart
         }
@@ -3197,6 +3197,11 @@ struct DashboardTrendChart: View {
             .chartYAxis(.hidden)
             .chartLegend(.hidden)
             .chartYScale(domain: yDomain ?? 0...1)
+            .chartXScale(range: .plotDimension(startPadding: 12, endPadding: 12))
+            .chartPlotStyle { plotArea in
+                plotArea
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
             .frame(height: height)
     }
 

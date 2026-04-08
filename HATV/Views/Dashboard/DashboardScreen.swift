@@ -142,17 +142,6 @@ struct DashboardScreen: View {
     private func dashboardContent(contentWidth: CGFloat) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                KioskOverviewBanner(
-                    title: heroTitle,
-                    subtitle: heroSubtitle,
-                    cameraCount: viewModel.allCameraStates.count,
-                    lightsOnCount: viewModel.lightsOnCount,
-                    activeClimateCount: viewModel.activeClimateCount,
-                    activeMediaCount: viewModel.activeMediaCount,
-                    accent: viewModel.isShowingVideoHub ? .cyan : .white
-                )
-                .frame(maxWidth: .infinity, alignment: .leading)
-
                 if viewModel.isShowingVideoHub {
                     videoHubContent(contentWidth: contentWidth)
                 } else if let currentView = viewModel.currentView {
@@ -518,28 +507,6 @@ struct DashboardScreen: View {
                 .foregroundStyle(.white.opacity(0.68))
         }
         .frame(maxWidth: .infinity, minHeight: 320)
-    }
-
-    private var heroTitle: String {
-        if viewModel.isShowingVideoHub {
-            return "Video Wall"
-        }
-
-        return viewModel.currentView?.displayTitle
-            ?? viewModel.selectedDashboard?.title
-            ?? "Dashboard"
-    }
-
-    private var heroSubtitle: String {
-        if viewModel.isShowingVideoHub {
-            return "Every Home Assistant camera in one native fullscreen hub."
-        }
-
-        if let dashboardTitle = viewModel.selectedDashboard?.title {
-            return "Kiosk view for \(dashboardTitle)."
-        }
-
-        return "Home Assistant companion for Apple TV."
     }
 
     private func presentCamera(entityID: String, title: String) {
@@ -1050,125 +1017,6 @@ private struct DashboardHeaderHeightReader: View {
             Color.clear
                 .preference(key: DashboardHeaderHeightPreferenceKey.self, value: proxy.size.height)
         }
-    }
-}
-
-private struct KioskOverviewBanner: View {
-    let title: String
-    let subtitle: String
-    let cameraCount: Int
-    let lightsOnCount: Int
-    let activeClimateCount: Int
-    let activeMediaCount: Int
-    let accent: Color
-
-    var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: 14) {
-                contentColumn
-                Spacer(minLength: 14)
-                clockColumn
-            }
-
-            VStack(alignment: .leading, spacing: 12) {
-                contentColumn
-                clockColumn
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color(red: 0.06, green: 0.10, blue: 0.15))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(accent.opacity(0.10))
-        )
-    }
-
-    private var contentColumn: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.system(size: 22, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
-
-            Text(subtitle)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.white.opacity(0.64))
-
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 8) {
-                    KioskInfoPill(title: "Cameras", value: "\(cameraCount)", tint: .cyan)
-                    KioskInfoPill(title: "Lights", value: "\(lightsOnCount)", tint: .yellow)
-                    KioskInfoPill(title: "Climate", value: "\(activeClimateCount)", tint: .orange)
-                    KioskInfoPill(title: "Media", value: "\(activeMediaCount)", tint: .pink)
-                }
-
-                LazyVGrid(
-                    columns: [
-                        GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 8),
-                        GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 8)
-                    ],
-                    alignment: .leading,
-                    spacing: 8
-                ) {
-                    KioskInfoPill(title: "Cameras", value: "\(cameraCount)", tint: .cyan)
-                    KioskInfoPill(title: "Lights", value: "\(lightsOnCount)", tint: .yellow)
-                    KioskInfoPill(title: "Climate", value: "\(activeClimateCount)", tint: .orange)
-                    KioskInfoPill(title: "Media", value: "\(activeMediaCount)", tint: .pink)
-                }
-            }
-        }
-    }
-
-    private var clockColumn: some View {
-        TimelineView(.periodic(from: .now, by: 60)) { context in
-            VStack(alignment: .trailing, spacing: 2) {
-                Text(context.date, format: .dateTime.hour().minute())
-                    .font(.system(size: 24, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-
-                Text(context.date, format: .dateTime.weekday(.abbreviated).month(.wide).day())
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.60))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(accent.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(.white.opacity(0.06))
-            )
-        }
-    }
-}
-
-private struct KioskInfoPill: View {
-    let title: String
-    let value: String
-    let tint: Color
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.white.opacity(0.60))
-
-            Text(value)
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(.white)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .strokeBorder(.white.opacity(0.05))
-        )
     }
 }
 
@@ -1727,15 +1575,24 @@ private struct DashboardMoreInfoTooltip: View {
                         }
 
                         if historySamples.count > 1 {
-                            DashboardTrendChart(
-                                samples: historySamples,
-                                accent: historyAccent,
-                                style: historyChartStyle,
-                                height: 180,
-                                showsXAxis: true
+                            VStack(spacing: 0) {
+                                DashboardTrendChart(
+                                    samples: historySamples,
+                                    accent: historyAccent,
+                                    style: historyChartStyle,
+                                    height: 188,
+                                    showsXAxis: true
+                                )
+                                .padding(.horizontal, 10)
+                                .padding(.top, 12)
+                                .padding(.bottom, 8)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.black.opacity(0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .strokeBorder(.white.opacity(0.05))
                             )
-                            .padding(.horizontal, 4)
-                            .padding(.top, 4)
                         } else {
                             RoundedRectangle(cornerRadius: 12, style: .continuous)
                                 .fill(Color.white.opacity(0.04))
