@@ -10,6 +10,11 @@ private let videoHubSelectionPath = "__hatv_video_hub__"
 @MainActor
 @Observable
 final class RootViewModel {
+    private enum FallbackActionDisposition {
+        case control
+        case moreInfo
+    }
+
     enum Screen {
         case booting
         case connection
@@ -21,6 +26,15 @@ final class RootViewModel {
         let entityIDs: [String]
         let startingIndex: Int
         let autoAdvance: Bool
+    }
+
+    struct MoreInfoPresentation: Identifiable, Equatable, Sendable {
+        let entityID: String
+        let preferredTitle: String?
+
+        var id: String {
+            preferredTitle.map { "\(entityID)|\($0)" } ?? entityID
+        }
     }
 
     var screen: Screen = .booting
@@ -53,6 +67,7 @@ final class RootViewModel {
     var errorMessage: String?
     var connectionProbeMessage: String?
     var externalCameraPresentation: CameraPresentationRequest?
+    var moreInfoPresentation: MoreInfoPresentation?
 
     private(set) var didBootstrap = false
     private let tokenStore = KeychainTokenStore()
@@ -652,11 +667,23 @@ final class RootViewModel {
     }
 
     func executePrimaryAction(for card: HAAnyConfig) async {
-        await executeAction(card.primaryAction, fallbackEntityID: card.entityID)
+        await executeAction(
+            card.primaryAction,
+            fallbackEntityID: card.primaryEntityID,
+            fallbackTitle: card.primaryText ?? card.title ?? card.heading
+        )
     }
 
     func executePrimaryAction(for item: HAEntityItem) async {
-        await executeAction(item.action, fallbackEntityID: item.entityID)
+        await executeAction(
+            item.action,
+            fallbackEntityID: item.entityID,
+            fallbackTitle: item.name ?? entityStates[item.entityID]?.friendlyName ?? item.entityID
+        )
+    }
+
+    func dismissMoreInfo() {
+        moreInfoPresentation = nil
     }
 
     func toggleEntity(_ entityID: String) async {
@@ -745,8 +772,22 @@ final class RootViewModel {
         await callService(named: serviceName, targetEntityIDs: [entityID])
     }
 
-    private func executeAction(_ action: HAActionConfig?, fallbackEntityID: String?) async {
-        guard let client else { return }
+    private func executeAction(
+        _ action: HAActionConfig?,
+        fallbackEntityID: String?,
+        fallbackTitle: String? = nil
+    ) async {
+        if action?.kind == "none" {
+            return
+        }
+
+        if action?.kind == "more-info" {
+            presentMoreInfo(
+                for: action?.entityIDOverride ?? fallbackEntityID,
+                preferredTitle: fallbackTitle
+            )
+            return
+        }
 
         do {
             if let action {
@@ -756,7 +797,7 @@ final class RootViewModel {
                         navigate(to: navigationPath)
                     }
                 case "call-service", "perform-action":
-                    if let serviceName = action.serviceName {
+                    if let serviceName = action.serviceName, let client {
                         let targetIDs = action.targetEntityIDs.isEmpty
                             ? [fallbackEntityID].compactMap { $0 }
                             : action.targetEntityIDs
@@ -767,7 +808,7 @@ final class RootViewModel {
                         )
                     }
                 case "toggle":
-                    if let fallbackEntityID {
+                    if let fallbackEntityID, let client {
                         try await client.callService(named: "homeassistant.toggle", targetEntityIDs: [fallbackEntityID])
                     }
                 default:
@@ -776,7 +817,12 @@ final class RootViewModel {
                     }
                 }
             } else if let fallbackEntityID {
-                try await performDefaultAction(for: fallbackEntityID)
+                switch fallbackActionDisposition(for: fallbackEntityID) {
+                case .control:
+                    try await performDefaultAction(for: fallbackEntityID)
+                case .moreInfo:
+                    presentMoreInfo(for: fallbackEntityID, preferredTitle: fallbackTitle)
+                }
             }
         } catch {
             present(error, context: "Action")
@@ -838,6 +884,43 @@ final class RootViewModel {
 
         isShowingVideoHub = false
         applySelectedView(at: index)
+    }
+
+    private func presentMoreInfo(for entityID: String?, preferredTitle: String?) {
+        guard let entityID, !entityID.isEmpty else {
+            errorMessage = "No entity is associated with this Home Assistant action."
+            return
+        }
+
+        moreInfoPresentation = MoreInfoPresentation(
+            entityID: entityID,
+            preferredTitle: preferredTitle
+        )
+    }
+
+    private func fallbackActionDisposition(for entityID: String) -> FallbackActionDisposition {
+        guard let state = entityStates[entityID] else {
+            return .moreInfo
+        }
+
+        switch state.domain {
+        case "button", "input_button", "scene", "script", "cover", "lock":
+            return .control
+        default:
+            return state.isToggleLike ? .control : .moreInfo
+        }
+    }
+
+    private func applyDebugMoreInfoOverrideIfNeeded() {
+        #if DEBUG
+        guard let debugOverride = DebugHomeAssistantOverride.load(),
+              let entityID = debugOverride.moreInfoEntityID,
+              entityStates[entityID] != nil else {
+            return
+        }
+
+        presentMoreInfo(for: entityID, preferredTitle: debugOverride.moreInfoTitle)
+        #endif
     }
 
     private func connectSession(
@@ -913,6 +996,7 @@ final class RootViewModel {
 
         publishTopShelfSnapshot()
         await applyPendingDeepLinkIfPossible()
+        applyDebugMoreInfoOverrideIfNeeded()
     }
 
     private func upsertConnection(

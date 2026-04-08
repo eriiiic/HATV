@@ -395,7 +395,7 @@ struct DashboardCardContent: View {
     }
 
     private var customButtonCard: some View {
-        if card.primaryAction != nil {
+        if card.hasPrimaryInteraction {
             return AnyView(buttonCard)
         }
 
@@ -1506,7 +1506,11 @@ struct DashboardCardContent: View {
     @ViewBuilder
     private func embeddedCardView(for child: HAAnyConfig) -> some View {
         if child.usesStandaloneFocusSurface {
-            DashboardStandaloneFocusCard {
+            DashboardStandaloneFocusCard(
+                action: !child.hasPrimaryInteraction ? nil : {
+                    Task { await viewModel.executePrimaryAction(for: child) }
+                }
+            ) {
                 DashboardCardContent(card: child, viewModel: viewModel, openCamera: openCamera)
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -2348,13 +2352,32 @@ enum DashboardCameraTileStyle: Sendable {
 struct DashboardStandaloneFocusCard<Content: View>: View {
     @Environment(\.isFocused) private var isFocused
 
+    let action: (() -> Void)?
     let content: Content
 
-    init(@ViewBuilder content: () -> Content) {
+    init(action: (() -> Void)? = nil, @ViewBuilder content: () -> Content) {
+        self.action = action
         self.content = content()
     }
 
     var body: some View {
+        Group {
+            if let action {
+                Button(action: action) {
+                    focusSurface
+                }
+                .buttonStyle(.plain)
+                .focusEffectDisabled()
+                .hoverEffectDisabled()
+            } else {
+                focusSurface
+                    .focusable(true)
+                    .focusEffectDisabled()
+            }
+        }
+    }
+
+    private var focusSurface: some View {
         content
             .contentShape(RoundedRectangle(cornerRadius: DashboardCardMetrics.cornerRadius, style: .continuous))
             .overlay {
@@ -2362,8 +2385,6 @@ struct DashboardStandaloneFocusCard<Content: View>: View {
                     .strokeBorder(.white.opacity(isFocused ? 0.16 : 0), lineWidth: 1.5)
             }
             .shadow(color: .black.opacity(isFocused ? 0.10 : 0), radius: isFocused ? 8 : 0, y: 4)
-            .focusable(true)
-            .focusEffectDisabled()
             .animation(.easeInOut(duration: 0.18), value: isFocused)
     }
 }

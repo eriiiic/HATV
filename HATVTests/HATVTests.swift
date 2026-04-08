@@ -57,6 +57,81 @@ struct HATVTests {
         #expect(action?.targetEntityIDs == ["light.office", "light.kitchen"])
     }
 
+    @Test @MainActor func opensMoreInfoPresentationForMoreInfoAction() async {
+        let viewModel = RootViewModel()
+        let action = HAActionConfig(
+            raw: [
+                "action": .string("more-info"),
+                "entity": .string("light.desk")
+            ]
+        )
+
+        let item = HAEntityItem(
+            entityID: "light.fallback",
+            name: "Desk Lamp",
+            icon: nil,
+            action: action
+        )
+
+        await viewModel.executePrimaryAction(for: item)
+
+        #expect(viewModel.moreInfoPresentation?.entityID == "light.desk")
+        #expect(viewModel.moreInfoPresentation?.preferredTitle == "Desk Lamp")
+    }
+
+    @Test @MainActor func opensMoreInfoForNonToggleCardsWithoutExplicitTapAction() async throws {
+        let viewModel = RootViewModel()
+        let sensorState = try decodeState(
+            entityID: "sensor.loft_temperature",
+            state: "22.4",
+            attributes: [
+                "friendly_name": .string("Loft Temperature"),
+                "unit_of_measurement": .string("°C")
+            ]
+        )
+        viewModel.entityStates[sensorState.entityID] = sensorState
+
+        let card = HAAnyConfig(
+            raw: [
+                "type": .string("sensor"),
+                "entity": .string(sensorState.entityID),
+                "name": .string("Loft Temp")
+            ]
+        )
+
+        await viewModel.executePrimaryAction(for: card)
+
+        #expect(viewModel.moreInfoPresentation?.entityID == sensorState.entityID)
+        #expect(viewModel.moreInfoPresentation?.preferredTitle == "Loft Temp")
+    }
+
+    @Test @MainActor func usesFirstGraphEntityForDefaultMoreInfo() async throws {
+        let viewModel = RootViewModel()
+        let firstState = try decodeState(
+            entityID: "sensor.energy_today",
+            state: "5.7",
+            attributes: [
+                "friendly_name": .string("Energy Today"),
+                "unit_of_measurement": .string("kWh")
+            ]
+        )
+        viewModel.entityStates[firstState.entityID] = firstState
+
+        let card = HAAnyConfig(
+            raw: [
+                "type": .string("custom:mini-graph-card"),
+                "entities": .array([
+                    .string(firstState.entityID),
+                    .string("sensor.energy_yesterday")
+                ])
+            ]
+        )
+
+        await viewModel.executePrimaryAction(for: card)
+
+        #expect(viewModel.moreInfoPresentation?.entityID == firstState.entityID)
+    }
+
     @Test func decodesDashboardWithoutExplicitID() throws {
         let json = """
         {
@@ -499,5 +574,22 @@ struct HATVTests {
 
         try store.delete(account: account)
         #expect(try store.load(account: account) == nil)
+    }
+
+    private func decodeState(
+        entityID: String,
+        state: String,
+        attributes: JSONDictionary = [:]
+    ) throws -> HAEntityState {
+        let payload: JSONDictionary = [
+            "entity_id": .string(entityID),
+            "state": .string(state),
+            "attributes": .object(attributes),
+            "last_changed": .string("2026-04-08T01:00:00Z"),
+            "last_updated": .string("2026-04-08T01:00:00Z")
+        ]
+
+        let data = try JSONEncoder().encode(JSONValue.object(payload))
+        return try JSONDecoder().decode(HAEntityState.self, from: data)
     }
 }

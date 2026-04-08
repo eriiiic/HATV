@@ -5,6 +5,8 @@ nonisolated struct DebugHomeAssistantOverride: Sendable {
     let baseURLString: String
     let accessToken: String
     let autoConnect: Bool
+    let moreInfoEntityID: String?
+    let moreInfoTitle: String?
 
     static func load() -> DebugHomeAssistantOverride? {
         #if DEBUG
@@ -21,12 +23,18 @@ nonisolated struct DebugHomeAssistantOverride: Sendable {
         let name = defaults.string(forKey: "debug.home_assistant_name")?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let autoConnect = defaults.object(forKey: "debug.home_assistant_auto_connect") as? Bool ?? true
+        let moreInfoEntityID = defaults.string(forKey: "debug.home_assistant_more_info_entity")?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let moreInfoTitle = defaults.string(forKey: "debug.home_assistant_more_info_title")?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
 
         return DebugHomeAssistantOverride(
             name: name?.isEmpty == false ? name! : "Home Assistant Debug",
             baseURLString: baseURL,
             accessToken: token,
-            autoConnect: autoConnect
+            autoConnect: autoConnect,
+            moreInfoEntityID: moreInfoEntityID?.isEmpty == false ? moreInfoEntityID : nil,
+            moreInfoTitle: moreInfoTitle?.isEmpty == false ? moreInfoTitle : nil
         )
         #else
         return nil

@@ -238,6 +238,7 @@ nonisolated struct HAActionConfig: Sendable {
     let serviceName: String?
     let targetEntityIDs: [String]
     let serviceData: JSONDictionary
+    let entityIDOverride: String?
 
     init?(raw: JSONDictionary) {
         guard let kind = raw["action"]?.stringValue else {
@@ -248,6 +249,7 @@ nonisolated struct HAActionConfig: Sendable {
         navigationPath = raw["navigation_path"]?.stringValue ?? raw["path"]?.stringValue
         serviceName = raw["perform_action"]?.stringValue ?? raw["service"]?.stringValue
         serviceData = raw["data"]?.objectValue ?? raw["service_data"]?.objectValue ?? [:]
+        entityIDOverride = raw["entity"]?.stringValue
 
         let target = raw["target"]?.objectValue
         if let ids = target?["entity_id"]?.arrayValue?.compactMap(\.stringValue) {
@@ -385,6 +387,30 @@ nonisolated struct HAAnyConfig: Decodable, Identifiable, Sendable {
         }
 
         return nil
+    }
+
+    var primaryEntityID: String? {
+        if let entityID {
+            return entityID
+        }
+
+        if let cameraEntityID {
+            return cameraEntityID
+        }
+
+        if let firstEntityID = entities.first?.entityID {
+            return firstEntityID
+        }
+
+        if let firstChipEntityID = chips.compactMap(\.entityID).first {
+            return firstChipEntityID
+        }
+
+        return nil
+    }
+
+    var hasPrimaryInteraction: Bool {
+        primaryAction != nil || primaryEntityID != nil
     }
 
     var heading: String? {

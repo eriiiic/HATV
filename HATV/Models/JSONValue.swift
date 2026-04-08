@@ -121,4 +121,31 @@ nonisolated enum JSONValue: Codable, Equatable, Sendable {
         guard case .array(let value) = self else { return nil }
         return value
     }
+
+    var compactDisplayString: String {
+        switch self {
+        case .string(let value):
+            return value
+        case .number(let value):
+            if value.rounded() == value {
+                return String(Int(value))
+            }
+            return value.formatted(.number.precision(.fractionLength(0...2)))
+        case .bool(let value):
+            return value ? "Yes" : "No"
+        case .array(let values):
+            let rendered = values.prefix(3).map(\.compactDisplayString)
+            if rendered.isEmpty {
+                return "—"
+            }
+            if values.count > 3 {
+                return rendered.joined(separator: ", ") + " +\(values.count - 3)"
+            }
+            return rendered.joined(separator: ", ")
+        case .object(let value):
+            return "\(value.count) values"
+        case .null:
+            return "—"
+        }
+    }
 }

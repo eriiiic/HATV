@@ -30,6 +30,23 @@ struct DashboardScreen: View {
                     header(contentWidth: contentWidth)
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
+
+                if let presentation = viewModel.moreInfoPresentation {
+                    DashboardMoreInfoTooltip(
+                        presentation: presentation,
+                        viewModel: viewModel,
+                        openCamera: { entityID, title in
+                            viewModel.dismissMoreInfo()
+                            presentCamera(entityID: entityID, title: title)
+                        },
+                        close: {
+                            viewModel.dismissMoreInfo()
+                            revealChrome()
+                        }
+                    )
+                    .zIndex(4)
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                }
             }
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
             .padding(.horizontal, 28)
@@ -48,9 +65,11 @@ struct DashboardScreen: View {
             cancelChromeAutoHide()
         }
         .onChange(of: viewModel.selectedViewIndex) { _, _ in
+            viewModel.dismissMoreInfo()
             revealChrome()
         }
         .onChange(of: viewModel.isShowingVideoHub) { _, _ in
+            viewModel.dismissMoreInfo()
             if !viewModel.isShowingVideoHub {
                 isManagingVideoCameras = false
                 isShowingHiddenVideoCameras = false
@@ -67,13 +86,29 @@ struct DashboardScreen: View {
             if camera == nil {
                 revealChrome()
             } else {
+                viewModel.dismissMoreInfo()
                 cancelChromeAutoHide()
+            }
+        }
+        .onChange(of: viewModel.moreInfoPresentation) { _, presentation in
+            if presentation != nil {
+                cancelChromeAutoHide()
+                withAnimation(.easeOut(duration: 0.24)) {
+                    isChromeVisible = true
+                }
+            } else {
+                scheduleChromeAutoHide()
             }
         }
         .onPlayPauseCommand {
             revealChrome()
         }
         .onExitCommand {
+            if viewModel.moreInfoPresentation != nil {
+                viewModel.dismissMoreInfo()
+                revealChrome()
+                return
+            }
             if isChromeVisible {
                 showDashboards()
             } else {
@@ -509,6 +544,7 @@ struct DashboardScreen: View {
         let normalizedEntityIDs = entityIDs.filter { !$0.isEmpty }
         guard !normalizedEntityIDs.isEmpty else { return }
 
+        viewModel.dismissMoreInfo()
         revealChrome()
         presentedCamera = PresentedCamera(
             cameraEntityIDs: normalizedEntityIDs,
@@ -1292,7 +1328,11 @@ private struct DashboardCardView: View {
     var body: some View {
         Group {
             if card.usesStandaloneFocusSurface {
-                DashboardStandaloneFocusCard {
+                DashboardStandaloneFocusCard(
+                    action: !card.hasPrimaryInteraction ? nil : {
+                        Task { await viewModel.executePrimaryAction(for: card) }
+                    }
+                ) {
                     DashboardCardContent(card: card, viewModel: viewModel, openCamera: openCamera)
                 }
             } else {
@@ -1300,6 +1340,416 @@ private struct DashboardCardView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}
+
+private struct DashboardMoreInfoTooltip: View {
+    let presentation: RootViewModel.MoreInfoPresentation
+    @Bindable var viewModel: RootViewModel
+    let openCamera: (String, String) -> Void
+    let close: () -> Void
+
+    private var state: HAEntityState? {
+        viewModel.state(for: presentation.entityID)
+    }
+
+    private var title: String {
+        presentation.preferredTitle ?? state?.friendlyName ?? presentation.entityID
+    }
+
+    private var subtitle: String {
+        if let state, state.domain == "camera", let areaName = viewModel.cameraAreaName(for: state.entityID) {
+            return areaName
+        }
+
+        if let subtitle = state?.subtitle, !subtitle.isEmpty {
+            return subtitle
+        }
+
+        return state?.formattedStateDescription ?? "Home Assistant details"
+    }
+
+    private var metricRows: [DashboardMoreInfoMetric] {
+        var usedKeys = Set<String>()
+        var metrics: [DashboardMoreInfoMetric] = []
+
+        if let state {
+            metrics.append(.init(title: "State", value: state.displayState))
+            metrics.append(.init(title: "Entity", value: state.entityID))
+            usedKeys.insert("friendly_name")
+            usedKeys.insert("entity_id")
+
+            if let date = state.lastUpdatedDate {
+                metrics.append(.init(title: "Updated", value: date.formatted(.dateTime.hour().minute().day().month(.abbreviated))))
+            }
+
+            switch state.domain {
+            case "climate":
+                if let current = state.currentTemperature {
+                    metrics.append(.init(title: "Current", value: "\(current.formatted(.number.precision(.fractionLength(0...1))))°"))
+                    usedKeys.insert("current_temperature")
+                }
+                if let target = state.targetTemperature {
+                    metrics.append(.init(title: "Target", value: "\(target.formatted(.number.precision(.fractionLength(0...1))))°"))
+                    usedKeys.insert("temperature")
+                }
+                if let humidity = state.humidity {
+                    metrics.append(.init(title: "Humidity", value: "\(humidity)%"))
+                    usedKeys.insert("humidity")
+                }
+            case "light":
+                if let brightness = state.brightnessPercent {
+                    metrics.append(.init(title: "Brightness", value: "\(brightness)%"))
+                    usedKeys.insert("brightness")
+                }
+            case "media_player":
+                if let volume = state.volumePercent {
+                    metrics.append(.init(title: "Volume", value: "\(volume)%"))
+                    usedKeys.insert("volume_level")
+                }
+                if let appName = state.appName {
+                    metrics.append(.init(title: "App", value: appName))
+                    usedKeys.insert("app_name")
+                }
+                if let mediaTitle = state.mediaTitle {
+                    metrics.append(.init(title: "Now Playing", value: mediaTitle))
+                    usedKeys.insert("media_title")
+                }
+            case "cover":
+                if let position = state.attributes["current_position"]?.compactDisplayString {
+                    metrics.append(.init(title: "Position", value: position + "%"))
+                    usedKeys.insert("current_position")
+                }
+            case "weather":
+                if let humidity = state.humidity {
+                    metrics.append(.init(title: "Humidity", value: "\(humidity)%"))
+                    usedKeys.insert("humidity")
+                }
+                if let windSpeed = state.windSpeed {
+                    metrics.append(.init(title: "Wind", value: "\(windSpeed.formatted(.number.precision(.fractionLength(0...1)))) \(state.windSpeedUnit ?? "")"))
+                    usedKeys.insert("wind_speed")
+                    usedKeys.insert("wind_speed_unit")
+                }
+                if let precipitation = state.precipitation {
+                    metrics.append(.init(title: "Precipitation", value: "\(precipitation.formatted(.number.precision(.fractionLength(0...1)))) \(state.precipitationUnit ?? "")"))
+                    usedKeys.insert("precipitation")
+                    usedKeys.insert("precipitation_unit")
+                }
+            default:
+                break
+            }
+
+            let reservedKeys: Set<String> = [
+                "attribution",
+                "editable",
+                "entity_picture",
+                "friendly_name",
+                "icon",
+                "supported_features"
+            ]
+
+            let extraMetrics = state.attributes
+                .keys
+                .sorted { lhs, rhs in
+                    lhs.localizedCaseInsensitiveCompare(rhs) == .orderedAscending
+                }
+                .filter { key in
+                    !reservedKeys.contains(key) && !usedKeys.contains(key)
+                }
+                .compactMap { key -> DashboardMoreInfoMetric? in
+                    guard let value = state.attributes[key]?.compactDisplayString,
+                          !value.isEmpty,
+                          value != "—" else {
+                        return nil
+                    }
+
+                    return DashboardMoreInfoMetric(
+                        title: prettifiedIdentifier(key),
+                        value: value
+                    )
+                }
+                .prefix(8)
+
+            metrics.append(contentsOf: extraMetrics)
+        } else {
+            metrics = [
+                .init(title: "Entity", value: presentation.entityID),
+                .init(title: "State", value: "Unavailable")
+            ]
+        }
+
+        return metrics
+    }
+
+    private var actions: [DashboardMoreInfoAction] {
+        guard let state else { return [] }
+
+        switch state.domain {
+        case "camera":
+            return [
+                .init(title: "Open Feed", systemImage: "video.fill") {
+                    openCamera(state.entityID, state.friendlyName)
+                }
+            ]
+        case "light":
+            return [
+                .init(title: state.isActive ? "Turn Off" : "Turn On", systemImage: state.isActive ? "lightbulb.slash.fill" : "lightbulb.fill") {
+                    Task { await viewModel.toggleEntity(state.entityID) }
+                },
+                .init(title: "Dim", systemImage: "minus") {
+                    Task { await viewModel.adjustLightBrightness(for: state.entityID, deltaPercent: -15) }
+                },
+                .init(title: "Brighten", systemImage: "plus") {
+                    Task { await viewModel.adjustLightBrightness(for: state.entityID, deltaPercent: 15) }
+                }
+            ]
+        case "climate":
+            return [
+                .init(title: state.state.lowercased() == "off" ? "Turn On" : "Turn Off", systemImage: state.state.lowercased() == "off" ? "power" : "power.circle.fill") {
+                    Task { await viewModel.toggleClimatePower(for: state.entityID) }
+                },
+                .init(title: "Cooler", systemImage: "minus") {
+                    Task { await viewModel.adjustClimateTemperature(for: state.entityID, delta: -0.5) }
+                },
+                .init(title: "Warmer", systemImage: "plus") {
+                    Task { await viewModel.adjustClimateTemperature(for: state.entityID, delta: 0.5) }
+                }
+            ]
+        case "media_player":
+            var items = [
+                DashboardMoreInfoAction(
+                    title: state.state.lowercased() == "playing" ? "Pause" : "Play",
+                    systemImage: state.state.lowercased() == "playing" ? "pause.fill" : "play.fill"
+                ) {
+                    Task { await viewModel.toggleMediaPlayback(for: state.entityID) }
+                }
+            ]
+
+            if state.volumePercent != nil {
+                items.append(
+                    .init(title: "Quieter", systemImage: "speaker.wave.1.fill") {
+                        Task { await viewModel.adjustMediaVolume(for: state.entityID, deltaPercent: -10) }
+                    }
+                )
+                items.append(
+                    .init(title: "Louder", systemImage: "speaker.wave.3.fill") {
+                        Task { await viewModel.adjustMediaVolume(for: state.entityID, deltaPercent: 10) }
+                    }
+                )
+            }
+            return items
+        case "cover":
+            return [
+                .init(title: "Open", systemImage: "door.left.hand.open") {
+                    Task { await viewModel.performCoverCommand(for: state.entityID, action: .open) }
+                },
+                .init(title: "Stop", systemImage: "pause.fill") {
+                    Task { await viewModel.performCoverCommand(for: state.entityID, action: .stop) }
+                },
+                .init(title: "Close", systemImage: "door.right.hand.closed") {
+                    Task { await viewModel.performCoverCommand(for: state.entityID, action: .close) }
+                }
+            ]
+        case "lock":
+            return [
+                .init(title: state.state.lowercased() == "locked" ? "Unlock" : "Lock", systemImage: state.state.lowercased() == "locked" ? "lock.open.fill" : "lock.fill") {
+                    Task {
+                        await viewModel.performLockCommand(
+                            for: state.entityID,
+                            action: state.state.lowercased() == "locked" ? .unlock : .lock
+                        )
+                    }
+                }
+            ]
+        default:
+            if state.isToggleLike {
+                return [
+                    .init(title: state.isActive ? "Turn Off" : "Turn On", systemImage: state.isActive ? "power.circle.fill" : "power") {
+                        Task { await viewModel.toggleEntity(state.entityID) }
+                    }
+                ]
+            }
+
+            return []
+        }
+    }
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.54)
+                .ignoresSafeArea()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    HStack(alignment: .top, spacing: 18) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(title)
+                                .font(.system(size: 28, weight: .bold, design: .rounded))
+                                .foregroundStyle(.white)
+                                .lineLimit(2)
+
+                            Text(subtitle)
+                                .font(.headline.weight(.semibold))
+                                .foregroundStyle(.white.opacity(0.68))
+                                .lineLimit(2)
+
+                            Text(presentation.entityID)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.white.opacity(0.46))
+                                .lineLimit(1)
+                        }
+
+                        Spacer(minLength: 16)
+
+                        Button("Close", action: close)
+                            .buttonStyle(.plain)
+                            .focusEffectDisabled()
+                            .hoverEffectDisabled()
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .strokeBorder(.white.opacity(0.08))
+                            )
+                    }
+
+                    if !actions.isEmpty {
+                        LazyVGrid(
+                            columns: [
+                                GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 10),
+                                GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 10),
+                                GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 10)
+                            ],
+                            alignment: .leading,
+                            spacing: 10
+                        ) {
+                            ForEach(actions) { action in
+                                DashboardMoreInfoControlButton(action: action)
+                            }
+                        }
+                        .focusSection()
+                    }
+
+                    LazyVGrid(
+                        columns: [
+                            GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 10),
+                            GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 10)
+                        ],
+                        alignment: .leading,
+                        spacing: 10
+                    ) {
+                        ForEach(metricRows) { metric in
+                            DashboardMoreInfoMetricRow(metric: metric)
+                        }
+                    }
+                }
+                .padding(22)
+            }
+            .frame(maxWidth: 760, maxHeight: 560)
+            .background(Color(red: 0.07, green: 0.10, blue: 0.14), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(.white.opacity(0.08))
+            )
+            .shadow(color: .black.opacity(0.30), radius: 28, y: 18)
+        }
+        .onExitCommand {
+            close()
+        }
+    }
+
+    private func prettifiedIdentifier(_ rawValue: String) -> String {
+        rawValue
+            .replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+            .split(separator: " ")
+            .map { $0.capitalized }
+            .joined(separator: " ")
+    }
+}
+
+private struct DashboardMoreInfoMetric: Identifiable {
+    let id = UUID()
+    let title: String
+    let value: String
+}
+
+private struct DashboardMoreInfoAction: Identifiable {
+    let id = UUID()
+    let title: String
+    let systemImage: String
+    let action: () -> Void
+}
+
+private struct DashboardMoreInfoMetricRow: View {
+    let metric: DashboardMoreInfoMetric
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(metric.title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.58))
+
+            Text(metric.value)
+                .font(.headline.weight(.bold))
+                .foregroundStyle(.white)
+                .lineLimit(3)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity, minHeight: 74, alignment: .leading)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(.white.opacity(0.05))
+        )
+    }
+}
+
+private struct DashboardMoreInfoControlButton: View {
+    @Environment(\.isFocused) private var isFocused
+
+    let action: DashboardMoreInfoAction
+
+    var body: some View {
+        Button(action: action.action) {
+            HStack(spacing: 10) {
+                Image(systemName: action.systemImage)
+                    .font(.subheadline.weight(.bold))
+                    .frame(width: 28, height: 28)
+                    .background(Color.white.opacity(isFocused ? 0.16 : 0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                Text(action.title)
+                    .font(.subheadline.weight(.bold))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(backgroundColor, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(borderColor, lineWidth: isFocused ? 1.5 : 1)
+            )
+            .animation(.easeInOut(duration: 0.18), value: isFocused)
+        }
+        .buttonStyle(.plain)
+        .focusEffectDisabled()
+        .hoverEffectDisabled()
+    }
+
+    private var backgroundColor: Color {
+        isFocused ? .white.opacity(0.14) : .white.opacity(0.08)
+    }
+
+    private var borderColor: Color {
+        isFocused ? .white.opacity(0.22) : .white.opacity(0.06)
     }
 }
 
