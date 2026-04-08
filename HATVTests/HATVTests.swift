@@ -389,6 +389,30 @@ struct HATVTests {
         #expect(samples.last?.value == 5.9)
     }
 
+    @Test func mapsCommonToggleHistoryStatesIntoChartableSamples() throws {
+        let samples = try HomeAssistantClient.historySamples(from: Data("""
+        [
+          [
+            {
+              "entity_id": "light.table_a_manger",
+              "state": "on",
+              "last_changed": "2026-04-04T04:49:14.069545+00:00"
+            },
+            {
+              "state": "off",
+              "last_changed": "2026-04-04T05:09:35.886101+00:00"
+            },
+            {
+              "state": "on",
+              "last_changed": "2026-04-04T08:38:47.896969+00:00"
+            }
+          ]
+        ]
+        """.utf8))
+
+        #expect(samples.map(\.value) == [1, 0, 1])
+    }
+
     @Test func decodesWeatherForecastServiceResponse() throws {
         let json = """
         {

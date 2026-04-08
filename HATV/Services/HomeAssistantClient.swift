@@ -342,7 +342,7 @@ actor HomeAssistantClient {
         return rawHistory
             .flatMap { $0 }
             .compactMap { state in
-                guard let value = Double(state.state),
+                guard let value = historyValue(for: state.state),
                       let timestamp = parseHistoryDate(state.lastChanged ?? state.lastUpdated) else {
                     return nil
                 }
@@ -350,6 +350,30 @@ actor HomeAssistantClient {
                 return HAHistorySample(timestamp: timestamp, value: value)
             }
             .sorted { $0.timestamp < $1.timestamp }
+    }
+
+    private nonisolated static func historyValue(for rawState: String) -> Double? {
+        if let numeric = Double(rawState) {
+            return numeric
+        }
+
+        switch rawState
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() {
+        case "on", "open", "opening", "playing", "home", "heat", "cool", "heat_cool",
+             "auto", "fan_only", "dry", "locked", "detected", "occupied", "online",
+             "active", "armed_away", "armed_home", "armed_night", "armed_vacation",
+             "armed_custom_bypass", "above_horizon":
+            return 1
+        case "off", "closed", "closing", "idle", "paused", "standby", "not_home",
+             "disarmed", "unlocked", "clear", "unoccupied", "offline", "inactive",
+             "below_horizon":
+            return 0
+        case "unknown", "unavailable", "none":
+            return nil
+        default:
+            return nil
+        }
     }
 
     private func request<T: Decodable>(_ path: String, as type: T.Type) async throws -> T {

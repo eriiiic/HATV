@@ -18,6 +18,15 @@ struct DashboardScreen: View {
     @State private var isShowingDiagnostics = false
     @State private var headerHeight: CGFloat = 0
 
+    private var moreInfoBinding: Binding<RootViewModel.MoreInfoPresentation?> {
+        Binding(
+            get: { viewModel.moreInfoPresentation },
+            set: { presentation in
+                viewModel.moreInfoPresentation = presentation
+            }
+        )
+    }
+
     var body: some View {
         GeometryReader { proxy in
             let contentWidth = max(proxy.size.width - 56, 0)
@@ -29,23 +38,6 @@ struct DashboardScreen: View {
                 if isChromeVisible {
                     header(contentWidth: contentWidth)
                         .transition(.move(edge: .top).combined(with: .opacity))
-                }
-
-                if let presentation = viewModel.moreInfoPresentation {
-                    DashboardMoreInfoTooltip(
-                        presentation: presentation,
-                        viewModel: viewModel,
-                        openCamera: { entityID, title in
-                            viewModel.dismissMoreInfo()
-                            presentCamera(entityID: entityID, title: title)
-                        },
-                        close: {
-                            viewModel.dismissMoreInfo()
-                            revealChrome()
-                        }
-                    )
-                    .zIndex(4)
-                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 }
             }
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
@@ -129,6 +121,20 @@ struct DashboardScreen: View {
         }
         .sheet(isPresented: $isShowingDiagnostics) {
             DashboardDiagnosticsView(viewModel: viewModel)
+        }
+        .fullScreenCover(item: moreInfoBinding) { presentation in
+            DashboardMoreInfoTooltip(
+                presentation: presentation,
+                viewModel: viewModel,
+                openCamera: { entityID, title in
+                    viewModel.dismissMoreInfo()
+                    presentCamera(entityID: entityID, title: title)
+                },
+                close: {
+                    viewModel.dismissMoreInfo()
+                    revealChrome()
+                }
+            )
         }
     }
 
@@ -1344,13 +1350,63 @@ private struct DashboardCardView: View {
 }
 
 private struct DashboardMoreInfoTooltip: View {
+    private enum TooltipFocusField: Hashable {
+        case close
+    }
+
     let presentation: RootViewModel.MoreInfoPresentation
     @Bindable var viewModel: RootViewModel
     let openCamera: (String, String) -> Void
     let close: () -> Void
+    @FocusState private var focusedField: TooltipFocusField?
 
     private var state: HAEntityState? {
         viewModel.state(for: presentation.entityID)
+    }
+
+    private var historyHours: Int {
+        switch state?.domain {
+        case "weather":
+            return 48
+        default:
+            return 24
+        }
+    }
+
+    private var historySamples: [HAHistorySample] {
+        viewModel.historySamples(for: presentation.entityID, hours: historyHours)
+    }
+
+    private var isLoadingHistory: Bool {
+        viewModel.isLoadingHistory(for: presentation.entityID, hours: historyHours)
+    }
+
+    private var historyAccent: Color {
+        switch state?.domain {
+        case "camera":
+            return .cyan
+        case "climate":
+            return .orange
+        case "light":
+            return .yellow
+        case "media_player":
+            return .pink
+        case "sensor":
+            return .mint
+        case "weather":
+            return .blue
+        default:
+            return .white
+        }
+    }
+
+    private var historyChartStyle: DashboardTrendChartStyle {
+        let distinctValues = Set(historySamples.map(\.value))
+        guard distinctValues.count <= 2, distinctValues.isSubset(of: Set([0.0, 1.0])) else {
+            return .line
+        }
+
+        return .step
     }
 
     private var title: String {
@@ -1481,6 +1537,30 @@ private struct DashboardMoreInfoTooltip: View {
         return metrics
     }
 
+    private var historySectionTitle: String {
+        historyChartStyle == .step ? "Activity" : "History"
+    }
+
+    private var historySectionSubtitle: String {
+        "Last \(historyHours) hours"
+    }
+
+    private var historyPlaceholderTitle: String {
+        if isLoadingHistory {
+            return "Loading history…"
+        }
+
+        return "No history yet"
+    }
+
+    private var historyPlaceholderSubtitle: String {
+        if isLoadingHistory {
+            return "Pulling recorder data from Home Assistant."
+        }
+
+        return "Home Assistant has not returned enough recorder data for this entity yet."
+    }
+
     private var actions: [DashboardMoreInfoAction] {
         guard let state else { return [] }
 
@@ -1605,6 +1685,7 @@ private struct DashboardMoreInfoTooltip: View {
                             .buttonStyle(.plain)
                             .focusEffectDisabled()
                             .hoverEffectDisabled()
+                            .focused($focusedField, equals: .close)
                             .font(.subheadline.weight(.bold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 14)
@@ -1615,6 +1696,7 @@ private struct DashboardMoreInfoTooltip: View {
                                     .strokeBorder(.white.opacity(0.08))
                             )
                     }
+                    .focusSection()
 
                     if !actions.isEmpty {
                         LazyVGrid(
@@ -1633,6 +1715,58 @@ private struct DashboardMoreInfoTooltip: View {
                         .focusSection()
                     }
 
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(alignment: .center, spacing: 10) {
+                            Text(historySectionTitle)
+                                .font(.headline.weight(.bold))
+                                .foregroundStyle(.white)
+
+                            Text(historySectionSubtitle)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.white.opacity(0.52))
+                        }
+
+                        if historySamples.count > 1 {
+                            DashboardTrendChart(
+                                samples: historySamples,
+                                accent: historyAccent,
+                                style: historyChartStyle,
+                                height: 180,
+                                showsXAxis: true
+                            )
+                            .padding(.horizontal, 4)
+                            .padding(.top, 4)
+                        } else {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(Color.white.opacity(0.04))
+                                .frame(height: 176)
+                                .overlay {
+                                    VStack(spacing: 8) {
+                                        Text(historyPlaceholderTitle)
+                                            .font(.headline.weight(.bold))
+                                            .foregroundStyle(.white)
+
+                                        Text(historyPlaceholderSubtitle)
+                                            .font(.subheadline.weight(.medium))
+                                            .foregroundStyle(.white.opacity(0.58))
+                                            .multilineTextAlignment(.center)
+                                            .frame(maxWidth: 360)
+                                    }
+                                    .padding(.horizontal, 24)
+                                }
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .strokeBorder(.white.opacity(0.06))
+                                )
+                        }
+                    }
+                    .padding(16)
+                    .background(Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(.white.opacity(0.06))
+                    )
+
                     LazyVGrid(
                         columns: [
                             GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 10),
@@ -1648,13 +1782,17 @@ private struct DashboardMoreInfoTooltip: View {
                 }
                 .padding(22)
             }
-            .frame(maxWidth: 760, maxHeight: 560)
+            .frame(maxWidth: 820, maxHeight: 640)
             .background(Color(red: 0.07, green: 0.10, blue: 0.14), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .strokeBorder(.white.opacity(0.08))
             )
             .shadow(color: .black.opacity(0.30), radius: 28, y: 18)
+        }
+        .task(id: presentation.id) {
+            focusedField = .close
+            await viewModel.loadHistoryIfNeeded(for: presentation.entityID, hours: historyHours)
         }
         .onExitCommand {
             close()

@@ -3148,9 +3148,17 @@ private struct GaugeRingView: View {
     }
 }
 
-private struct DashboardTrendChart: View {
+enum DashboardTrendChartStyle {
+    case line
+    case step
+}
+
+struct DashboardTrendChart: View {
     let samples: [HAHistorySample]
     let accent: Color
+    var style: DashboardTrendChartStyle = .line
+    var height: CGFloat = 120
+    var showsXAxis = false
 
     private var displaySamples: [HAHistorySample] {
         guard samples.count > 60 else { return samples }
@@ -3175,14 +3183,31 @@ private struct DashboardTrendChart: View {
         return (minimum - padding)...(maximum + padding)
     }
 
+    private var interpolationMethod: InterpolationMethod {
+        switch style {
+        case .line:
+            return .catmullRom
+        case .step:
+            return .stepStart
+        }
+    }
+
     var body: some View {
+        configuredChart
+            .chartYAxis(.hidden)
+            .chartLegend(.hidden)
+            .chartYScale(domain: yDomain ?? 0...1)
+            .frame(height: height)
+    }
+
+    private var baseChart: some View {
         Chart {
             ForEach(displaySamples) { sample in
                 AreaMark(
                     x: .value("Time", sample.timestamp),
                     y: .value("Value", sample.value)
                 )
-                .interpolationMethod(.catmullRom)
+                .interpolationMethod(interpolationMethod)
                 .foregroundStyle(
                     LinearGradient(
                         colors: [accent.opacity(0.30), accent.opacity(0.03)],
@@ -3195,15 +3220,33 @@ private struct DashboardTrendChart: View {
                     x: .value("Time", sample.timestamp),
                     y: .value("Value", sample.value)
                 )
-                .interpolationMethod(.catmullRom)
+                .interpolationMethod(interpolationMethod)
                 .lineStyle(StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
                 .foregroundStyle(accent)
             }
         }
-        .chartXAxis(.hidden)
-        .chartYAxis(.hidden)
-        .chartLegend(.hidden)
-        .chartYScale(domain: yDomain ?? 0...1)
-        .frame(height: 120)
+    }
+
+    @ViewBuilder
+    private var configuredChart: some View {
+        if showsXAxis {
+            baseChart.chartXAxis {
+                AxisMarks(values: .automatic(desiredCount: 4)) { value in
+                    AxisGridLine(stroke: StrokeStyle(lineWidth: 1, dash: [2, 4]))
+                        .foregroundStyle(.white.opacity(0.08))
+                    AxisTick(stroke: StrokeStyle(lineWidth: 1))
+                        .foregroundStyle(.white.opacity(0.18))
+                    AxisValueLabel {
+                        if let date = value.as(Date.self) {
+                            Text(date.formatted(.dateTime.hour()))
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.white.opacity(0.54))
+                        }
+                    }
+                }
+            }
+        } else {
+            baseChart.chartXAxis(.hidden)
+        }
     }
 }

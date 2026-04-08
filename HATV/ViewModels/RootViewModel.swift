@@ -538,6 +538,10 @@ final class RootViewModel {
         historySamplesByKey[historyKey(entityID: entityID, hours: hours)] ?? []
     }
 
+    func isLoadingHistory(for entityID: String, hours: Int) -> Bool {
+        loadingHistoryKeys.contains(historyKey(entityID: entityID, hours: hours))
+    }
+
     func statisticsSamples(
         for statisticID: String,
         hours: Int,
