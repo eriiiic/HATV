@@ -694,8 +694,55 @@ final class RootViewModel {
         )
     }
 
+    func toggleClimatePower(for entityID: String) async {
+        guard let state = entityStates[entityID] else { return }
+
+        let isCurrentlyOff = ["off", "unavailable", "unknown"].contains(state.state.lowercased())
+        await callService(
+            named: isCurrentlyOff ? "climate.turn_on" : "climate.turn_off",
+            targetEntityIDs: [entityID]
+        )
+    }
+
     func toggleMediaPlayback(for entityID: String) async {
         await callService(named: "media_player.media_play_pause", targetEntityIDs: [entityID])
+    }
+
+    func adjustMediaVolume(for entityID: String, deltaPercent: Int) async {
+        let current = entityStates[entityID]?.volumePercent ?? 0
+        let nextValue = min(max(current + deltaPercent, 0), 100)
+
+        await callService(
+            named: "media_player.volume_set",
+            targetEntityIDs: [entityID],
+            serviceData: ["volume_level": .number(Double(nextValue) / 100.0)]
+        )
+    }
+
+    func performCoverCommand(for entityID: String, action: CoverAction) async {
+        let serviceName: String
+        switch action {
+        case .open:
+            serviceName = "cover.open_cover"
+        case .stop:
+            serviceName = "cover.stop_cover"
+        case .close:
+            serviceName = "cover.close_cover"
+        }
+
+        await callService(named: serviceName, targetEntityIDs: [entityID])
+    }
+
+    func performLockCommand(for entityID: String, action: LockAction) async {
+        let serviceName: String
+        switch action {
+        case .lock:
+            serviceName = "lock.lock"
+        case .unlock:
+            serviceName = "lock.unlock"
+        }
+
+        await callService(named: serviceName, targetEntityIDs: [entityID])
     }
 
     private func executeAction(_ action: HAActionConfig?, fallbackEntityID: String?) async {
@@ -1327,5 +1374,18 @@ final class RootViewModel {
 #if canImport(TVServices)
         TVTopShelfContentProvider.topShelfContentDidChange()
 #endif
+    }
+}
+
+extension RootViewModel {
+    enum CoverAction {
+        case open
+        case stop
+        case close
+    }
+
+    enum LockAction {
+        case lock
+        case unlock
     }
 }

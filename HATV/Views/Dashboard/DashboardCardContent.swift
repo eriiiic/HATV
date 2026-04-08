@@ -19,6 +19,12 @@ private let mdiSymbolMap: [String: String] = [
     "weather-partly-cloudy": "cloud.sun.fill"
 ]
 
+private enum DashboardCardMetrics {
+    static let cornerRadius: CGFloat = 10
+    static let nestedCornerRadius: CGFloat = 8
+    static let cardPadding: CGFloat = 14
+}
+
 struct DashboardCardContent: View {
     let card: HAAnyConfig
     @Bindable var viewModel: RootViewModel
@@ -94,11 +100,11 @@ struct DashboardCardContent: View {
             .compactMap(viewModel.state)
             .prefix(3)
 
-        return Button {
-            Task { await viewModel.executePrimaryAction(for: card) }
-        } label: {
-            cardContainer(accent: accent, minHeight: referencedStates.isEmpty ? 168 : 204) {
-                VStack(alignment: .leading, spacing: 14) {
+        return cardContainer(accent: accent, minHeight: referencedStates.isEmpty ? 160 : 196) {
+            VStack(alignment: .leading, spacing: 14) {
+                cardPrimaryActionButton {
+                    Task { await viewModel.executePrimaryAction(for: card) }
+                } content: {
                     HStack(alignment: .top, spacing: 12) {
                         typeBadge(card.type, tint: accent)
                         Spacer()
@@ -135,20 +141,22 @@ struct DashboardCardContent: View {
                     }
                 }
             }
+
+            if let entityID = card.entityID {
+                quickControlGrid(for: state, entityID: entityID)
+            }
         }
-        .buttonStyle(.plain)
-        .focusEffectDisabled()
     }
 
     private var headingCard: some View {
         let accent = accentColor(for: nil)
 
-        return cardContainer(accent: accent, minHeight: 90) {
-            VStack(alignment: .leading, spacing: 10) {
+        return cardContainer(accent: accent, minHeight: card.headingStyle?.lowercased() == "subtitle" ? 74 : 88) {
+            VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 12) {
                     iconBadge(symbolName: symbolName(for: nil, rawIcon: card.icon, fallback: "sparkles"))
                     Text(primaryTitle(for: nil))
-                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                        .font(.system(size: card.headingStyle?.lowercased() == "subtitle" ? 18 : 22, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                         .lineLimit(2)
                         .minimumScaleFactor(0.84)
@@ -167,24 +175,18 @@ struct DashboardCardContent: View {
     private var entitiesCard: some View {
         let accent = accentColor(for: entityState)
 
-        return cardContainer(accent: accent, minHeight: 220) {
+        return cardContainer(accent: accent, minHeight: 214) {
             VStack(alignment: .leading, spacing: 14) {
                 if let title = resolvedText(card.heading) {
                     Text(title)
-                        .font(.title3.bold())
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                         .lineLimit(2)
                 }
 
                 VStack(spacing: 10) {
                     ForEach(card.entities, id: \.entityID) { item in
-                        Button {
-                            Task { await viewModel.executePrimaryAction(for: item) }
-                        } label: {
-                            entityRow(for: item)
-                        }
-                        .buttonStyle(.plain)
-                        .focusEffectDisabled()
+                        interactiveEntityRow(for: item)
                     }
                 }
                 .focusSection()
@@ -239,6 +241,7 @@ struct DashboardCardContent: View {
                         }
                         .buttonStyle(.plain)
                         .focusEffectDisabled()
+                        .hoverEffectDisabled()
                     }
                 }
             }
@@ -328,17 +331,22 @@ struct DashboardCardContent: View {
         let state = entityState
         let accent = accentColor(for: state)
 
-        return Button {
-            Task { await viewModel.executePrimaryAction(for: card) }
-        } label: {
-            cardContainer(accent: accent, minHeight: card.isVerticalLayout ? 188 : 152) {
-                ViewThatFits(in: .horizontal) {
-                    tileHorizontalLayout(state: state)
-                    tileVerticalLayout(state: state)
+        return cardContainer(accent: accent, minHeight: card.isVerticalLayout ? 180 : 146) {
+            VStack(alignment: .leading, spacing: 14) {
+                cardPrimaryActionButton {
+                    Task { await viewModel.executePrimaryAction(for: card) }
+                } content: {
+                    ViewThatFits(in: .horizontal) {
+                        tileHorizontalLayout(state: state)
+                        tileVerticalLayout(state: state)
+                    }
+                }
+
+                if let entityID = card.entityID {
+                    quickControlGrid(for: state, entityID: entityID)
                 }
             }
         }
-        .buttonStyle(.plain)
     }
 
     private var buttonCard: some View {
@@ -346,11 +354,11 @@ struct DashboardCardContent: View {
         let accent = accentColor(for: state)
         let navigationPath = card.navigationPath
 
-        return Button {
-            Task { await viewModel.executePrimaryAction(for: card) }
-        } label: {
-            cardContainer(accent: accent, minHeight: 148) {
-                VStack(alignment: .leading, spacing: 14) {
+        return cardContainer(accent: accent, minHeight: 142) {
+            VStack(alignment: .leading, spacing: 14) {
+                cardPrimaryActionButton {
+                    Task { await viewModel.executePrimaryAction(for: card) }
+                } content: {
                     HStack(alignment: .top) {
                         if card.buttonShowsIcon {
                             iconBadge(symbolName: symbolName(for: state, rawIcon: card.icon, fallback: "arrow.right.circle.fill"))
@@ -379,8 +387,11 @@ struct DashboardCardContent: View {
                         .lineLimit(2)
                 }
             }
+
+            if let entityID = card.entityID {
+                quickControlGrid(for: state, entityID: entityID)
+            }
         }
-        .buttonStyle(.plain)
     }
 
     private var customButtonCard: some View {
@@ -881,7 +892,7 @@ struct DashboardCardContent: View {
                 HStack(spacing: 18) {
                     VStack(alignment: .leading, spacing: 10) {
                         Text(primaryTitle(for: state))
-                            .font(.title2.weight(.bold))
+                            .font(.system(size: 20, weight: .bold, design: .rounded))
                             .foregroundStyle(.white)
                             .lineLimit(2)
 
@@ -961,7 +972,7 @@ struct DashboardCardContent: View {
                 }
 
                 Text(state?.displayState ?? "Unavailable")
-                    .font(.system(size: 40, weight: .bold, design: .rounded))
+                    .font(.system(size: 34, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
@@ -1105,12 +1116,12 @@ struct DashboardCardContent: View {
         let state = entityState
         let accent = accentColor(for: state)
 
-        return cardContainer(accent: accent, minHeight: 204) {
+        return cardContainer(accent: accent, minHeight: 192) {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(state?.mediaTitle ?? primaryTitle(for: state))
-                            .font(.title2.weight(.bold))
+                            .font(.system(size: 21, weight: .bold, design: .rounded))
                             .foregroundStyle(.white)
                             .lineLimit(2)
 
@@ -1146,7 +1157,7 @@ struct DashboardCardContent: View {
 
                 Spacer(minLength: 0)
 
-                adaptiveButtonGrid(maxColumns: 1) {
+                adaptiveButtonGrid(maxColumns: state?.volumePercent != nil ? 3 : 1) {
                     DashboardControlButton(
                         title: state?.state.lowercased() == "playing" ? "Pause" : "Play",
                         systemImage: state?.state.lowercased() == "playing" ? "pause.fill" : "play.fill",
@@ -1154,6 +1165,16 @@ struct DashboardCardContent: View {
                     ) {
                         guard let entityID = card.entityID else { return }
                         Task { await viewModel.toggleMediaPlayback(for: entityID) }
+                    }
+
+                    if let entityID = card.entityID, state?.volumePercent != nil {
+                        DashboardControlButton(title: "Quieter", systemImage: "speaker.wave.1.fill", tint: accent) {
+                            Task { await viewModel.adjustMediaVolume(for: entityID, deltaPercent: -10) }
+                        }
+
+                        DashboardControlButton(title: "Louder", systemImage: "speaker.wave.3.fill", tint: accent) {
+                            Task { await viewModel.adjustMediaVolume(for: entityID, deltaPercent: 10) }
+                        }
                     }
                 }
             }
@@ -1166,12 +1187,12 @@ struct DashboardCardContent: View {
         let current = state?.currentTemperature
         let target = state?.targetTemperature
 
-        return cardContainer(accent: accent, minHeight: 224) {
+        return cardContainer(accent: accent, minHeight: 210) {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(primaryTitle(for: state))
-                            .font(.title2.weight(.bold))
+                            .font(.system(size: 21, weight: .bold, design: .rounded))
                             .foregroundStyle(.white)
                             .lineLimit(2)
 
@@ -1220,7 +1241,16 @@ struct DashboardCardContent: View {
 
                 Spacer(minLength: 0)
 
-                adaptiveButtonGrid(maxColumns: 2) {
+                adaptiveButtonGrid(maxColumns: 3) {
+                    DashboardControlButton(
+                        title: state?.state.lowercased() == "off" ? "Turn On" : "Turn Off",
+                        systemImage: state?.state.lowercased() == "off" ? "power" : "power.circle.fill",
+                        tint: accent
+                    ) {
+                        guard let entityID = card.entityID else { return }
+                        Task { await viewModel.toggleClimatePower(for: entityID) }
+                    }
+
                     DashboardControlButton(title: "Cooler", systemImage: "minus", tint: accent) {
                         guard let entityID = card.entityID else { return }
                         Task { await viewModel.adjustClimateTemperature(for: entityID, delta: -0.5) }
@@ -1239,12 +1269,12 @@ struct DashboardCardContent: View {
         let state = entityState
         let accent = accentColor(for: state)
 
-        return cardContainer(accent: accent, minHeight: 204) {
+        return cardContainer(accent: accent, minHeight: 194) {
             VStack(alignment: .leading, spacing: 14) {
                 HStack {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(primaryTitle(for: state))
-                            .font(.title2.weight(.bold))
+                            .font(.system(size: 21, weight: .bold, design: .rounded))
                             .foregroundStyle(.white)
                             .lineLimit(2)
 
@@ -1307,15 +1337,15 @@ struct DashboardCardContent: View {
     private var mushroomTemplateCard: some View {
         let accent = accentColor(for: entityState)
 
-        return Button {
-            Task { await viewModel.executePrimaryAction(for: card) }
-        } label: {
-            cardContainer(accent: accent, minHeight: 176) {
-                VStack(alignment: card.isVerticalLayout ? .leading : .center, spacing: 14) {
+        return cardContainer(accent: accent, minHeight: 166) {
+            VStack(alignment: card.isVerticalLayout ? .leading : .center, spacing: 14) {
+                cardPrimaryActionButton {
+                    Task { await viewModel.executePrimaryAction(for: card) }
+                } content: {
                     iconBadge(symbolName: symbolName(for: entityState, rawIcon: card.icon, fallback: "sparkles.rectangle.stack.fill"))
 
                     Text(primaryTitle(for: entityState))
-                        .font(.title2.weight(.bold))
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                         .multilineTextAlignment(card.isVerticalLayout ? .leading : .center)
                         .lineLimit(3)
@@ -1337,8 +1367,11 @@ struct DashboardCardContent: View {
                 }
                 .frame(maxWidth: .infinity, alignment: card.isVerticalLayout ? .leading : .center)
             }
+
+            if let entityID = card.entityID {
+                quickControlGrid(for: entityState, entityID: entityID)
+            }
         }
-        .buttonStyle(.plain)
     }
 
     private var mushroomChipsCard: some View {
@@ -1366,12 +1399,12 @@ struct DashboardCardContent: View {
         let roomSensors = card.roomSensors.compactMap(viewModel.state)
         let topEntities = Array(card.entities.prefix(3))
 
-        return cardContainer(accent: accent, minHeight: 244) {
+        return cardContainer(accent: accent, minHeight: 228) {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(card.roomAreaName ?? primaryTitle(for: nil))
-                            .font(.system(size: 26, weight: .bold, design: .rounded))
+                            .font(.system(size: 22, weight: .bold, design: .rounded))
                             .foregroundStyle(.white)
                             .lineLimit(2)
 
@@ -1407,13 +1440,7 @@ struct DashboardCardContent: View {
 
                 VStack(spacing: 12) {
                     ForEach(topEntities, id: \.entityID) { item in
-                        Button {
-                            Task { await viewModel.executePrimaryAction(for: item) }
-                        } label: {
-                            entityRow(for: item)
-                        }
-                        .buttonStyle(.plain)
-                        .focusEffectDisabled()
+                        interactiveEntityRow(for: item)
                     }
                 }
                 .focusSection()
@@ -1446,6 +1473,7 @@ struct DashboardCardContent: View {
                 }
                 .buttonStyle(.plain)
                 .focusEffectDisabled()
+                .hoverEffectDisabled()
             } else {
                 DashboardChipPill(symbolName: symbol, text: label, tint: accentColor(for: state))
             }
@@ -1517,6 +1545,29 @@ struct DashboardCardContent: View {
         }
     }
 
+    @ViewBuilder
+    private func interactiveEntityRow(for item: HAEntityItem) -> some View {
+        let state = viewModel.state(for: item.entityID)
+        let quickControl = primaryQuickControl(for: state, entityID: item.entityID)
+
+        HStack(alignment: .center, spacing: 10) {
+            cardPrimaryActionButton {
+                Task { await viewModel.executePrimaryAction(for: item) }
+            } content: {
+                entityRow(for: item)
+            }
+
+            if let quickControl {
+                DashboardIconControlButton(
+                    systemImage: quickControl.systemImage,
+                    tint: quickControl.tint,
+                    accessibilityLabel: quickControl.title,
+                    action: quickControl.action
+                )
+            }
+        }
+    }
+
     private func iconBadge(symbolName: String) -> some View {
         Image(systemName: symbolName)
             .font(.headline.weight(.bold))
@@ -1532,15 +1583,28 @@ struct DashboardCardContent: View {
     ) -> some View {
         content()
             .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .topLeading)
-            .padding(12)
+            .padding(DashboardCardMetrics.cardPadding)
             .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color(red: 0.08, green: 0.11, blue: 0.15))
+                RoundedRectangle(cornerRadius: DashboardCardMetrics.cornerRadius, style: .continuous)
+                    .fill(Color(red: 0.085, green: 0.11, blue: 0.145))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(accent.opacity(0.08))
+                RoundedRectangle(cornerRadius: DashboardCardMetrics.cornerRadius, style: .continuous)
+                    .strokeBorder(accent.opacity(0.07))
             )
+            .overlay(alignment: .topLeading) {
+                Rectangle()
+                    .fill(accent.opacity(0.16))
+                    .frame(maxWidth: .infinity, maxHeight: 2, alignment: .leading)
+                    .clipShape(
+                        UnevenRoundedRectangle(
+                            topLeadingRadius: DashboardCardMetrics.cornerRadius,
+                            bottomLeadingRadius: 0,
+                            bottomTrailingRadius: 0,
+                            topTrailingRadius: DashboardCardMetrics.cornerRadius
+                        )
+                    )
+            }
     }
 
     private func tileHorizontalLayout(state: HAEntityState?) -> some View {
@@ -1623,7 +1687,7 @@ struct DashboardCardContent: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: DashboardCardMetrics.nestedCornerRadius, style: .continuous))
     }
 
     private func adaptiveMetricGrid<Content: View>(@ViewBuilder content: () -> Content) -> some View {
@@ -1644,6 +1708,188 @@ struct DashboardCardContent: View {
             }
         }
         .focusSection()
+    }
+
+    private func cardPrimaryActionButton<Content: View>(
+        action: @escaping () -> Void,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        Button(action: action) {
+            content()
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .contentShape(RoundedRectangle(cornerRadius: DashboardCardMetrics.nestedCornerRadius, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .focusEffectDisabled()
+        .hoverEffectDisabled()
+    }
+
+    @ViewBuilder
+    private func quickControlGrid(for state: HAEntityState?, entityID: String) -> some View {
+        let controls = quickControls(for: state, entityID: entityID)
+        if !controls.isEmpty {
+            adaptiveButtonGrid(maxColumns: min(controls.count, 3)) {
+                ForEach(controls) { control in
+                    DashboardControlButton(
+                        title: control.title,
+                        systemImage: control.systemImage,
+                        tint: control.tint,
+                        action: control.action
+                    )
+                }
+            }
+        }
+    }
+
+    private func quickControls(for state: HAEntityState?, entityID: String) -> [DashboardQuickControl] {
+        guard let state else { return [] }
+
+        switch state.domain {
+        case "light":
+            var controls = [
+                DashboardQuickControl(
+                    title: state.isActive ? "Turn Off" : "Turn On",
+                    systemImage: state.isActive ? "lightbulb.slash.fill" : "lightbulb.fill",
+                    tint: accentColor(for: state),
+                    action: { Task { await viewModel.toggleEntity(entityID) } }
+                )
+            ]
+
+            if state.brightnessPercent != nil || card.showsBrightnessControl {
+                controls.append(
+                    DashboardQuickControl(
+                        title: "Dim",
+                        systemImage: "minus",
+                        tint: accentColor(for: state),
+                        action: { Task { await viewModel.adjustLightBrightness(for: entityID, deltaPercent: -15) } }
+                    )
+                )
+                controls.append(
+                    DashboardQuickControl(
+                        title: "Brighten",
+                        systemImage: "plus",
+                        tint: accentColor(for: state),
+                        action: { Task { await viewModel.adjustLightBrightness(for: entityID, deltaPercent: 15) } }
+                    )
+                )
+            }
+
+            return controls
+        case "climate":
+            return [
+                DashboardQuickControl(
+                    title: state.state.lowercased() == "off" ? "Turn On" : "Turn Off",
+                    systemImage: state.state.lowercased() == "off" ? "power" : "power.circle.fill",
+                    tint: accentColor(for: state),
+                    action: { Task { await viewModel.toggleClimatePower(for: entityID) } }
+                ),
+                DashboardQuickControl(
+                    title: "Cooler",
+                    systemImage: "minus",
+                    tint: accentColor(for: state),
+                    action: { Task { await viewModel.adjustClimateTemperature(for: entityID, delta: -0.5) } }
+                ),
+                DashboardQuickControl(
+                    title: "Warmer",
+                    systemImage: "plus",
+                    tint: accentColor(for: state),
+                    action: { Task { await viewModel.adjustClimateTemperature(for: entityID, delta: 0.5) } }
+                )
+            ]
+        case "media_player":
+            var controls = [
+                DashboardQuickControl(
+                    title: state.state.lowercased() == "playing" ? "Pause" : "Play",
+                    systemImage: state.state.lowercased() == "playing" ? "pause.fill" : "play.fill",
+                    tint: accentColor(for: state),
+                    action: { Task { await viewModel.toggleMediaPlayback(for: entityID) } }
+                )
+            ]
+
+            if state.volumePercent != nil {
+                controls.append(
+                    DashboardQuickControl(
+                        title: "Quieter",
+                        systemImage: "speaker.wave.1.fill",
+                        tint: accentColor(for: state),
+                        action: { Task { await viewModel.adjustMediaVolume(for: entityID, deltaPercent: -10) } }
+                    )
+                )
+                controls.append(
+                    DashboardQuickControl(
+                        title: "Louder",
+                        systemImage: "speaker.wave.3.fill",
+                        tint: accentColor(for: state),
+                        action: { Task { await viewModel.adjustMediaVolume(for: entityID, deltaPercent: 10) } }
+                    )
+                )
+            }
+
+            return controls
+        case "cover":
+            return [
+                DashboardQuickControl(
+                    title: "Open",
+                    systemImage: "door.left.hand.open",
+                    tint: accentColor(for: state),
+                    action: { Task { await viewModel.performCoverCommand(for: entityID, action: .open) } }
+                ),
+                DashboardQuickControl(
+                    title: "Stop",
+                    systemImage: "pause.fill",
+                    tint: accentColor(for: state),
+                    action: { Task { await viewModel.performCoverCommand(for: entityID, action: .stop) } }
+                ),
+                DashboardQuickControl(
+                    title: "Close",
+                    systemImage: "door.right.hand.closed",
+                    tint: accentColor(for: state),
+                    action: { Task { await viewModel.performCoverCommand(for: entityID, action: .close) } }
+                )
+            ]
+        case "lock":
+            return [
+                DashboardQuickControl(
+                    title: state.state.lowercased() == "locked" ? "Unlock" : "Lock",
+                    systemImage: state.state.lowercased() == "locked" ? "lock.open.fill" : "lock.fill",
+                    tint: accentColor(for: state),
+                    action: {
+                        Task {
+                            await viewModel.performLockCommand(
+                                for: entityID,
+                                action: state.state.lowercased() == "locked" ? .unlock : .lock
+                            )
+                        }
+                    }
+                )
+            ]
+        case "button", "input_button", "scene", "script":
+            return [
+                DashboardQuickControl(
+                    title: "Run",
+                    systemImage: state.domain == "scene" ? "sparkles" : "play.fill",
+                    tint: accentColor(for: state),
+                    action: { Task { await viewModel.toggleEntity(entityID) } }
+                )
+            ]
+        default:
+            if state.isToggleLike {
+                return [
+                    DashboardQuickControl(
+                        title: state.isActive ? "Turn Off" : "Turn On",
+                        systemImage: state.isActive ? "power.circle.fill" : "power",
+                        tint: accentColor(for: state),
+                        action: { Task { await viewModel.toggleEntity(entityID) } }
+                    )
+                ]
+            }
+
+            return []
+        }
+    }
+
+    private func primaryQuickControl(for state: HAEntityState?, entityID: String) -> DashboardQuickControl? {
+        quickControls(for: state, entityID: entityID).first
     }
 
     private func adaptiveButtonGrid<Content: View>(
@@ -2110,13 +2356,12 @@ struct DashboardStandaloneFocusCard<Content: View>: View {
 
     var body: some View {
         content
-            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .scaleEffect(isFocused ? 1.008 : 1)
+            .contentShape(RoundedRectangle(cornerRadius: DashboardCardMetrics.cornerRadius, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(.white.opacity(isFocused ? 0.18 : 0), lineWidth: 2)
+                RoundedRectangle(cornerRadius: DashboardCardMetrics.cornerRadius, style: .continuous)
+                    .strokeBorder(.white.opacity(isFocused ? 0.16 : 0), lineWidth: 1.5)
             }
-            .shadow(color: .black.opacity(isFocused ? 0.14 : 0), radius: isFocused ? 16 : 0, y: 8)
+            .shadow(color: .black.opacity(isFocused ? 0.10 : 0), radius: isFocused ? 8 : 0, y: 4)
             .focusable(true)
             .focusEffectDisabled()
             .animation(.easeInOut(duration: 0.18), value: isFocused)
@@ -2169,17 +2414,17 @@ struct DashboardCameraTile: View {
                         }
                         .foregroundStyle(.white)
                         .padding(.horizontal, 10)
-                        .padding(.vertical, 7)
-                        .background(Color.black.opacity(0.28), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                        .padding(.vertical, 6)
+                        .background(Color.black.opacity(0.24), in: RoundedRectangle(cornerRadius: DashboardCardMetrics.nestedCornerRadius, style: .continuous))
                     }
 
                     Spacer()
                 }
-                .padding(16)
+                .padding(style == .videoWall ? 14 : 12)
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text(title)
-                        .font(.system(size: style == .videoWall ? 22 : 18, weight: .bold, design: .rounded))
+                        .font(.system(size: style == .videoWall ? 20 : 17, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                         .multilineTextAlignment(.leading)
                         .lineLimit(2)
@@ -2196,7 +2441,7 @@ struct DashboardCameraTile: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
                 }
-                .padding(style == .videoWall ? 16 : 14)
+                .padding(style == .videoWall ? 14 : 12)
             }
             .frame(maxWidth: .infinity)
             .frame(height: height ?? tileHeight)
@@ -2207,13 +2452,14 @@ struct DashboardCameraTile: View {
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(tint.opacity(isFocused ? 0.30 : 0.12), lineWidth: isFocused ? 2 : 1)
+                    .strokeBorder(tint.opacity(isFocused ? 0.26 : 0.12), lineWidth: isFocused ? 1.5 : 1)
             )
-            .shadow(color: .black.opacity(isFocused ? 0.10 : 0.04), radius: isFocused ? 10 : 4, y: 4)
+            .shadow(color: .black.opacity(isFocused ? 0.10 : 0.03), radius: isFocused ? 8 : 2, y: 3)
             .animation(.easeInOut(duration: 0.18), value: isFocused)
         }
         .buttonStyle(.plain)
         .focusEffectDisabled()
+        .hoverEffectDisabled()
     }
 
     private var cameraPreview: some View {
@@ -2250,14 +2496,14 @@ struct DashboardCameraTile: View {
     private var tileHeight: CGFloat {
         switch style {
         case .videoWall:
-            return 204
+            return 190
         case .dashboard:
-            return 178
+            return 164
         }
     }
 
     private var cornerRadius: CGFloat {
-        style == .videoWall ? 12 : 10
+        style == .videoWall ? DashboardCardMetrics.cornerRadius : DashboardCardMetrics.nestedCornerRadius
     }
 }
 
@@ -2292,10 +2538,10 @@ private struct DashboardEntityRowLabel: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(backgroundColor, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(11)
+        .background(backgroundColor, in: RoundedRectangle(cornerRadius: DashboardCardMetrics.nestedCornerRadius, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: DashboardCardMetrics.nestedCornerRadius, style: .continuous)
                 .strokeBorder(borderColor, lineWidth: isFocused ? 1.5 : 1)
         )
         .animation(.easeInOut(duration: 0.18), value: isFocused)
@@ -2335,10 +2581,10 @@ private struct DashboardEntityRowLabel: View {
 
     private var iconView: some View {
         Image(systemName: symbolName)
-            .font(.headline.weight(.bold))
+            .font(.subheadline.weight(.bold))
             .foregroundStyle(.white)
-            .frame(width: 36, height: 36)
-            .background(Color.white.opacity(isFocused ? 0.12 : 0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .frame(width: 34, height: 34)
+            .background(Color.white.opacity(isFocused ? 0.12 : 0.07), in: RoundedRectangle(cornerRadius: DashboardCardMetrics.nestedCornerRadius, style: .continuous))
     }
 
     private var titleView: some View {
@@ -2358,11 +2604,11 @@ private struct DashboardEntityRowLabel: View {
     }
 
     private var backgroundColor: Color {
-        isFocused ? Color.white.opacity(0.12) : Color.white.opacity(0.045)
+        isFocused ? Color.white.opacity(0.10) : Color.white.opacity(0.035)
     }
 
     private var borderColor: Color {
-        isFocused ? .white.opacity(0.24) : .white.opacity(0.06)
+        isFocused ? .white.opacity(0.20) : .white.opacity(0.05)
     }
 }
 
@@ -2378,7 +2624,7 @@ private struct DashboardMetricPill: View {
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(.white)
                 .frame(width: 28, height: 28)
-                .background(tint.opacity(0.18), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .background(tint.opacity(0.16), in: RoundedRectangle(cornerRadius: DashboardCardMetrics.nestedCornerRadius, style: .continuous))
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
@@ -2397,7 +2643,11 @@ private struct DashboardMetricPill: View {
         .frame(maxWidth: .infinity, minHeight: 70, alignment: .leading)
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: DashboardCardMetrics.nestedCornerRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: DashboardCardMetrics.nestedCornerRadius, style: .continuous)
+                .strokeBorder(.white.opacity(0.045))
+        )
     }
 }
 
@@ -2414,7 +2664,8 @@ private struct DashboardControlButton: View {
             HStack(alignment: .center, spacing: 10) {
                 Image(systemName: systemImage)
                     .font(.subheadline.weight(.bold))
-                    .frame(width: 18)
+                    .frame(width: 28, height: 28)
+                    .background(tint.opacity(isFocused ? 0.22 : 0.16), in: RoundedRectangle(cornerRadius: DashboardCardMetrics.nestedCornerRadius, style: .continuous))
 
                 Text(title)
                     .font(.subheadline.weight(.bold))
@@ -2423,26 +2674,27 @@ private struct DashboardControlButton: View {
                     .multilineTextAlignment(.leading)
             }
             .foregroundStyle(.white)
-            .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 9)
-            .background(backgroundColor, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(backgroundColor, in: RoundedRectangle(cornerRadius: DashboardCardMetrics.nestedCornerRadius, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: DashboardCardMetrics.nestedCornerRadius, style: .continuous)
                     .strokeBorder(borderColor, lineWidth: isFocused ? 1.5 : 1)
             )
             .animation(.easeInOut(duration: 0.18), value: isFocused)
         }
         .buttonStyle(.plain)
         .focusEffectDisabled()
+        .hoverEffectDisabled()
     }
 
     private var backgroundColor: Color {
-        isFocused ? tint.opacity(0.24) : tint.opacity(0.12)
+        isFocused ? tint.opacity(0.20) : tint.opacity(0.10)
     }
 
     private var borderColor: Color {
-        isFocused ? .white.opacity(0.26) : .white.opacity(0.08)
+        isFocused ? .white.opacity(0.22) : .white.opacity(0.06)
     }
 }
 
@@ -2465,9 +2717,9 @@ private struct DashboardChipPill: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
-        .background(backgroundColor, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(backgroundColor, in: RoundedRectangle(cornerRadius: DashboardCardMetrics.nestedCornerRadius, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: DashboardCardMetrics.nestedCornerRadius, style: .continuous)
                 .strokeBorder(borderColor, lineWidth: isFocused ? 1.5 : 1)
         )
         .animation(.easeInOut(duration: 0.18), value: isFocused)
@@ -2479,6 +2731,49 @@ private struct DashboardChipPill: View {
 
     private var borderColor: Color {
         isFocused ? .white.opacity(0.28) : .white.opacity(0.10)
+    }
+}
+
+private struct DashboardQuickControl: Identifiable {
+    let id = UUID()
+    let title: String
+    let systemImage: String
+    let tint: Color
+    let action: () -> Void
+}
+
+private struct DashboardIconControlButton: View {
+    @Environment(\.isFocused) private var isFocused
+
+    let systemImage: String
+    let tint: Color
+    let accessibilityLabel: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(.white)
+                .frame(width: 54, height: 54)
+                .background(backgroundColor, in: RoundedRectangle(cornerRadius: DashboardCardMetrics.nestedCornerRadius, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: DashboardCardMetrics.nestedCornerRadius, style: .continuous)
+                        .strokeBorder(borderColor, lineWidth: isFocused ? 1.5 : 1)
+                )
+                .animation(.easeInOut(duration: 0.18), value: isFocused)
+        }
+        .buttonStyle(.plain)
+        .focusEffectDisabled()
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    private var backgroundColor: Color {
+        isFocused ? tint.opacity(0.20) : tint.opacity(0.10)
+    }
+
+    private var borderColor: Color {
+        isFocused ? .white.opacity(0.22) : .white.opacity(0.06)
     }
 }
 

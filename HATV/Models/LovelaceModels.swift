@@ -391,6 +391,10 @@ nonisolated struct HAAnyConfig: Decodable, Identifiable, Sendable {
         raw["heading"]?.stringValue ?? title
     }
 
+    var headingStyle: String? {
+        raw["heading_style"]?.stringValue
+    }
+
     var secondaryText: String? {
         raw["secondary"]?.stringValue ?? raw["subtitle"]?.stringValue ?? label
     }
