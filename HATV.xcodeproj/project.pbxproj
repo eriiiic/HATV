@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		5731836D49AE4BEFA2A28F43 /* HATVTopShelfExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = D5ABB84847CE445E95E665A7 /* HATVTopShelfExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		07D471A62F7CAB2B00C578D3 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -21,12 +25,34 @@
 			remoteGlobalIDString = 07D471952F7CAB2A00C578D3;
 			remoteInfo = HATV;
 		};
+		EC97759AAA754E8DBAE0DEF4 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 07D4718E2F7CAB2A00C578D3 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = EF22D5490B314257B9A064ED;
+			remoteInfo = HATVTopShelfExtension;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		72F6AC4DBA2845D39F3C9C94 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				5731836D49AE4BEFA2A28F43 /* HATVTopShelfExtension.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		07D471962F7CAB2A00C578D3 /* HATV.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HATV.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		07D471A52F7CAB2B00C578D3 /* HATVTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HATVTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		07D471AF2F7CAB2B00C578D3 /* HATVUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HATVUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		D5ABB84847CE445E95E665A7 /* HATVTopShelfExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = HATVTopShelfExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -43,6 +69,11 @@
 		07D471B22F7CAB2B00C578D3 /* HATVUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = HATVUITests;
+			sourceTree = "<group>";
+		};
+		BA1CA43C68A24F7D9EFC69B1 /* HATVTopShelfExtension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = HATVTopShelfExtension;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -69,6 +100,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		F6F5E34079C94AE6AB9F406C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -78,6 +116,7 @@
 				07D471982F7CAB2A00C578D3 /* HATV */,
 				07D471A82F7CAB2B00C578D3 /* HATVTests */,
 				07D471B22F7CAB2B00C578D3 /* HATVUITests */,
+				BA1CA43C68A24F7D9EFC69B1 /* HATVTopShelfExtension */,
 				07D471972F7CAB2A00C578D3 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -88,6 +127,7 @@
 				07D471962F7CAB2A00C578D3 /* HATV.app */,
 				07D471A52F7CAB2B00C578D3 /* HATVTests.xctest */,
 				07D471AF2F7CAB2B00C578D3 /* HATVUITests.xctest */,
+				D5ABB84847CE445E95E665A7 /* HATVTopShelfExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -101,11 +141,13 @@
 			buildPhases = (
 				07D471922F7CAB2A00C578D3 /* Sources */,
 				07D471932F7CAB2A00C578D3 /* Frameworks */,
+				72F6AC4DBA2845D39F3C9C94 /* Embed App Extensions */,
 				07D471942F7CAB2A00C578D3 /* Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				F1E8143F449D419E8A01AD3C /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				07D471982F7CAB2A00C578D3 /* HATV */,
@@ -163,6 +205,28 @@
 			productReference = 07D471AF2F7CAB2B00C578D3 /* HATVUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		EF22D5490B314257B9A064ED /* HATVTopShelfExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B33B01786982402891479511 /* Build configuration list for PBXNativeTarget "HATVTopShelfExtension" */;
+			buildPhases = (
+				E081F85E544F431588E3C69D /* Sources */,
+				F6F5E34079C94AE6AB9F406C /* Frameworks */,
+				2C0CA696331049D2AEF1D3D8 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				BA1CA43C68A24F7D9EFC69B1 /* HATVTopShelfExtension */,
+			);
+			name = HATVTopShelfExtension;
+			packageProductDependencies = (
+			);
+			productName = HATVTopShelfExtension;
+			productReference = D5ABB84847CE445E95E665A7 /* HATVTopShelfExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -184,6 +248,9 @@
 						CreatedOnToolsVersion = 26.4;
 						TestTargetID = 07D471952F7CAB2A00C578D3;
 					};
+					EF22D5490B314257B9A064ED = {
+						CreatedOnToolsVersion = 26.4;
+					};
 				};
 			};
 			buildConfigurationList = 07D471912F7CAB2A00C578D3 /* Build configuration list for PBXProject "HATV" */;
@@ -203,6 +270,7 @@
 				07D471952F7CAB2A00C578D3 /* HATV */,
 				07D471A42F7CAB2B00C578D3 /* HATVTests */,
 				07D471AE2F7CAB2B00C578D3 /* HATVUITests */,
+				EF22D5490B314257B9A064ED /* HATVTopShelfExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -223,6 +291,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		07D471AD2F7CAB2B00C578D3 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		2C0CA696331049D2AEF1D3D8 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -253,6 +328,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		E081F85E544F431588E3C69D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -265,6 +347,11 @@
 			isa = PBXTargetDependency;
 			target = 07D471952F7CAB2A00C578D3 /* HATV */;
 			targetProxy = 07D471B02F7CAB2B00C578D3 /* PBXContainerItemProxy */;
+		};
+		F1E8143F449D419E8A01AD3C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = EF22D5490B314257B9A064ED /* HATVTopShelfExtension */;
+			targetProxy = EC97759AAA754E8DBAE0DEF4 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -395,13 +482,13 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = "App Icon & Top Shelf Image";
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = HATV/HATV.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = XX656J46PT;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UIUserInterfaceStyle = Automatic;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Config/HATV-Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -424,13 +511,13 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = "App Icon & Top Shelf Image";
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = HATV/HATV.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = XX656J46PT;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UIUserInterfaceStyle = Automatic;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Config/HATV-Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -532,6 +619,64 @@
 			};
 			name = Release;
 		};
+		3BF689AD72A743238D8A13D8 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = HATVTopShelfExtension/HATVTopShelfExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = XX656J46PT;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Config/HATVTopShelfExtension-Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.delattre.me.HATV.TopShelf;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 3;
+				TVOS_DEPLOYMENT_TARGET = 26.4;
+			};
+			name = Release;
+		};
+		924C4EAF6A714F609CE83E55 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = HATVTopShelfExtension/HATVTopShelfExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = XX656J46PT;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Config/HATVTopShelfExtension-Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.delattre.me.HATV.TopShelf;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 3;
+				TVOS_DEPLOYMENT_TARGET = 26.4;
+			};
+			name = Debug;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -567,6 +712,15 @@
 			buildConfigurations = (
 				07D471C02F7CAB2B00C578D3 /* Debug */,
 				07D471C12F7CAB2B00C578D3 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B33B01786982402891479511 /* Build configuration list for PBXNativeTarget "HATVTopShelfExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				924C4EAF6A714F609CE83E55 /* Debug */,
+				3BF689AD72A743238D8A13D8 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

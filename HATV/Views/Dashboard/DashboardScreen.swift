@@ -42,6 +42,7 @@ struct DashboardScreen: View {
         }
         .onAppear {
             revealChrome()
+            applyExternalCameraRequestIfNeeded()
         }
         .onDisappear {
             cancelChromeAutoHide()
@@ -57,6 +58,10 @@ struct DashboardScreen: View {
                 selectedVideoAreaName = nil
             }
             revealChrome()
+            applyExternalCameraRequestIfNeeded()
+        }
+        .onChange(of: viewModel.externalCameraPresentation) { _, _ in
+            applyExternalCameraRequestIfNeeded()
         }
         .onChange(of: presentedCamera) { _, camera in
             if camera == nil {
@@ -498,6 +503,17 @@ struct DashboardScreen: View {
             currentIndex: min(max(index, 0), normalizedEntityIDs.count - 1),
             autoAdvance: autoAdvance
         )
+    }
+
+    private func applyExternalCameraRequestIfNeeded() {
+        guard let request = viewModel.externalCameraPresentation else { return }
+
+        presentCamera(
+            entityIDs: request.entityIDs,
+            startingAt: request.startingIndex,
+            autoAdvance: request.autoAdvance
+        )
+        viewModel.externalCameraPresentation = nil
     }
 
     private func startCameraTour(with cameras: [HAEntityState]) {

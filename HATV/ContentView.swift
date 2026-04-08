@@ -102,6 +102,15 @@ struct ContentView: View {
         .task {
             await viewModel.bootstrap(with: storedConnection, modelContext: modelContext)
         }
+        .onOpenURL { url in
+            Task {
+                await viewModel.handleIncomingURL(
+                    url,
+                    storedConnection: storedConnection,
+                    modelContext: modelContext
+                )
+            }
+        }
         .alert(
             "Something Needs Attention",
             isPresented: Binding(

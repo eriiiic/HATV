@@ -1,6 +1,9 @@
 import Foundation
 import Observation
 import SwiftData
+#if canImport(TVServices)
+import TVServices
+#endif
 
 private let videoHubSelectionPath = "__hatv_video_hub__"
 
@@ -12,6 +15,12 @@ final class RootViewModel {
         case connection
         case dashboardPicker
         case dashboard
+    }
+
+    struct CameraPresentationRequest: Equatable, Sendable {
+        let entityIDs: [String]
+        let startingIndex: Int
+        let autoAdvance: Bool
     }
 
     var screen: Screen = .booting
@@ -43,6 +52,7 @@ final class RootViewModel {
     var statusMessage = "Loading…"
     var errorMessage: String?
     var connectionProbeMessage: String?
+    var externalCameraPresentation: CameraPresentationRequest?
 
     private(set) var didBootstrap = false
     private let tokenStore = KeychainTokenStore()
@@ -56,6 +66,7 @@ final class RootViewModel {
     private var activeConnection: StoredConnection?
     private var activeModelContext: ModelContext?
     private let defaults = UserDefaults.standard
+    private var pendingDeepLink: HATVDeepLink?
 
     var currentView: HALovelaceView? {
         guard let dashboardConfig, dashboardConfig.views.indices.contains(selectedViewIndex) else {
@@ -331,6 +342,9 @@ final class RootViewModel {
             if isShowingVideoHub {
                 await preloadAllCameraURLs()
             }
+
+            publishTopShelfSnapshot()
+            await applyPendingDeepLinkIfPossible()
         } catch {
             present(error, context: "Dashboard")
         }
@@ -338,6 +352,7 @@ final class RootViewModel {
 
     func showDashboardPicker() {
         screen = .dashboardPicker
+        publishTopShelfSnapshot()
     }
 
     func showConnectionEditor() {
@@ -398,6 +413,7 @@ final class RootViewModel {
         isShowingVideoHub = true
         persistCurrentViewSelection()
         await preloadAllCameraURLs()
+        publishTopShelfSnapshot()
     }
 
     func state(for entityID: String?) -> HAEntityState? {
@@ -434,11 +450,13 @@ final class RootViewModel {
     func hideCamera(_ entityID: String) {
         hiddenCameraEntityIDs.insert(entityID)
         persistHiddenCameraPreferences()
+        publishTopShelfSnapshot()
     }
 
     func unhideCamera(_ entityID: String) {
         hiddenCameraEntityIDs.remove(entityID)
         persistHiddenCameraPreferences()
+        publishTopShelfSnapshot()
     }
 
     func toggleFavoriteCamera(_ entityID: String) {
@@ -448,6 +466,23 @@ final class RootViewModel {
             favoriteCameraEntityIDs.insert(entityID)
         }
         persistFavoriteCameraPreferences()
+        publishTopShelfSnapshot()
+    }
+
+    func handleIncomingURL(
+        _ url: URL,
+        storedConnection: StoredConnection?,
+        modelContext: ModelContext
+    ) async {
+        activeConnection = storedConnection ?? activeConnection
+        activeModelContext = modelContext
+
+        guard let deepLink = HATVDeepLink(url: url) else {
+            return
+        }
+
+        pendingDeepLink = deepLink
+        await applyPendingDeepLinkIfPossible()
     }
 
     func shouldDisplayCard(_ card: HAAnyConfig) -> Bool {
@@ -828,6 +863,9 @@ final class RootViewModel {
                 errorMessage = "No Lovelace dashboards are available for this account."
             }
         }
+
+        publishTopShelfSnapshot()
+        await applyPendingDeepLinkIfPossible()
     }
 
     private func upsertConnection(
@@ -898,6 +936,7 @@ final class RootViewModel {
             let encoded = try JSONEncoder().encode(json)
             let state = try JSONDecoder().decode(HAEntityState.self, from: encoded)
             entityStates[state.entityID] = state
+            publishTopShelfSnapshotIfRelevant(entityID: entityID, domain: state.domain)
         } catch {
             present(error, context: "Live update")
         }
@@ -1065,6 +1104,7 @@ final class RootViewModel {
 
         selectedViewIndex = index
         persistCurrentViewSelection()
+        publishTopShelfSnapshot()
 
         Task {
             await preloadCurrentViewData()
@@ -1122,6 +1162,7 @@ final class RootViewModel {
                 return (entry.entityID, areaName)
             }
         )
+        publishTopShelfSnapshot()
     }
 
     private func loadConnectionPreferences() {
@@ -1182,5 +1223,109 @@ final class RootViewModel {
 
     private func viewModelDisplayability(_ card: HAAnyConfig) -> Bool {
         shouldDisplayCard(card)
+    }
+
+    private func applyPendingDeepLinkIfPossible() async {
+        guard let pendingDeepLink else { return }
+
+        if screen == .connection || screen == .booting || client == nil {
+            return
+        }
+
+        if selectedDashboard == nil {
+            if let activeConnection,
+               let dashboard = matchingDashboard(for: activeConnection, dashboards: dashboards) ?? dashboards.first {
+                selectedDashboard = dashboard
+                await reloadSelectedDashboard()
+                return
+            } else if let firstDashboard = dashboards.first {
+                selectedDashboard = firstDashboard
+                await reloadSelectedDashboard()
+                return
+            }
+        }
+
+        switch pendingDeepLink {
+        case .home:
+            screen = .dashboard
+        case .video:
+            await showVideoHub()
+            screen = .dashboard
+        case .dashboard(let viewPath):
+            if let viewPath,
+               let dashboardConfig,
+               let matchingView = dashboardConfig.views.first(where: { $0.matchesNavigationPath(viewPath) }) {
+                selectView(matchingView)
+            } else {
+                isShowingVideoHub = false
+                persistCurrentViewSelection()
+                publishTopShelfSnapshot()
+            }
+            screen = .dashboard
+        case .camera(let entityID):
+            await showVideoHub()
+            externalCameraPresentation = CameraPresentationRequest(
+                entityIDs: [entityID],
+                startingIndex: 0,
+                autoAdvance: false
+            )
+            screen = .dashboard
+        }
+
+        self.pendingDeepLink = nil
+    }
+
+    private func publishTopShelfSnapshotIfRelevant(entityID: String, domain: String) {
+        let relevantDomains: Set<String> = ["camera", "light", "climate", "media_player", "weather"]
+        if relevantDomains.contains(domain) || favoriteCameraEntityIDs.contains(entityID) || hiddenCameraEntityIDs.contains(entityID) {
+            publishTopShelfSnapshot()
+        }
+    }
+
+    private func publishTopShelfSnapshot() {
+        guard let snapshot = currentTopShelfSnapshot() else {
+            HATVTopShelfSnapshotStore.clear()
+            notifyTopShelfContentChanged()
+            return
+        }
+
+        HATVTopShelfSnapshotStore.write(snapshot)
+        notifyTopShelfContentChanged()
+    }
+
+    private func currentTopShelfSnapshot() -> HATVTopShelfSnapshot? {
+        guard !serverURLString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+
+        let preferredCameraStates = favoriteCameraStates.isEmpty ? visibleCameraStates : favoriteCameraStates
+        let cameraShortcuts = preferredCameraStates.prefix(4).map { camera in
+            HATVTopShelfCameraSnapshot(
+                entityID: camera.entityID,
+                title: camera.friendlyName,
+                subtitle: cameraAreaName(for: camera.entityID) ?? camera.displayState
+            )
+        }
+
+        return HATVTopShelfSnapshot(
+            locationName: instanceInfo?.locationName,
+            dashboardTitle: selectedDashboard?.title ?? activeConnection?.selectedDashboardTitle,
+            viewTitle: isShowingVideoHub ? "Video Wall" : (currentView?.displayTitle ?? activeConnection?.selectedViewTitle),
+            viewPath: isShowingVideoHub ? videoHubSelectionPath : (currentView?.path ?? activeConnection?.selectedViewPath),
+            isShowingVideoHub: isShowingVideoHub,
+            visibleCameraCount: visibleCameraStates.count,
+            favoriteCameraCount: favoriteCameraStates.count,
+            lightsOnCount: lightsOnCount,
+            activeClimateCount: activeClimateCount,
+            activeMediaCount: activeMediaCount,
+            cameraShortcuts: cameraShortcuts,
+            updatedAt: .now
+        )
+    }
+
+    private func notifyTopShelfContentChanged() {
+#if canImport(TVServices)
+        TVTopShelfContentProvider.topShelfContentDidChange()
+#endif
     }
 }
